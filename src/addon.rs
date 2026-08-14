@@ -99,6 +99,46 @@ pub enum ParamKind {
     App,
 }
 
+/// Whether something the platform named is the application a binding meant.
+///
+/// Here rather than in each addon, because [`ParamKind::App`] is declared here
+/// and an addon author has no way to guess how to compare one. The value
+/// stored in a binding is whatever Nobble's foreground watcher reports —
+/// `exe:spotify.exe` — and what the addon is comparing it against comes from
+/// somewhere else entirely, in whatever form *that* API uses.
+///
+/// So the comparison is on the **stem**: `exe:spotify.exe` and `Spotify.exe`
+/// both reduce to `spotify`. The Windows media session reports `Spotify.exe`
+/// for a desktop install and `SpotifyAB.SpotifyMusic_…!Spotify` for the Store
+/// build, and matching either exactly would work on one machine and not the
+/// next.
+///
+/// An empty target matches **nothing**, which is the opposite of what an
+/// unconstrained match would do. Naming a target means "this one", and a
+/// blank field that matched everything would turn a typo into a key that
+/// controls whatever happens to be loudest.
+///
+/// ```
+/// # use nobble_addon_sdk::app_matches;
+/// assert!(app_matches("Spotify.exe", "exe:spotify.exe"));
+/// assert!(app_matches("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify", "exe:spotify.exe"));
+/// assert!(!app_matches("chrome.exe", "exe:spotify.exe"));
+/// assert!(!app_matches("Spotify.exe", ""));
+/// ```
+#[must_use]
+pub fn app_matches(reported: &str, target: &str) -> bool {
+    let stem = target
+        .rsplit(':')
+        .next()
+        .unwrap_or(target)
+        .trim_end_matches(".exe")
+        .trim_end_matches(".EXE")
+        .to_ascii_lowercase();
+    // `Invocation::param` already treats a cleared field as absent, so reaching
+    // here with an empty target is a bug rather than a user choice.
+    !stem.is_empty() && reported.to_ascii_lowercase().contains(&stem)
+}
+
 /// One thing an action needs to know, declared so an interface can ask for it.
 ///
 /// The point of declaring rather than parsing a free-text argument: FR-048
@@ -503,5 +543,40 @@ pub trait Addon: Send {
     /// something the addon announces.
     fn read_signals(&mut self) -> Reading {
         Reading::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::app_matches;
+
+    #[test]
+    fn an_application_matches_whichever_form_each_side_is_in() {
+        // The two sides come from different places and neither will change:
+        // Nobble's foreground watcher says `exe:spotify.exe`, and the API the
+        // addon is asking says whatever the application registered with it.
+        assert!(app_matches("Spotify.exe", "exe:spotify.exe"));
+        assert!(app_matches(
+            "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify",
+            "exe:spotify.exe"
+        ));
+        assert!(app_matches("Spotify.exe", "spotify"));
+        assert!(app_matches("chrome.exe", "exe:Chrome.exe"));
+    }
+
+    #[test]
+    fn a_different_application_does_not_match() {
+        assert!(!app_matches("chrome.exe", "exe:spotify.exe"));
+        assert!(!app_matches("Spotify.exe", "exe:firefox.exe"));
+    }
+
+    #[test]
+    fn an_empty_target_matches_nothing_rather_than_everything() {
+        // Naming a target means "this one". A blank one matching everything
+        // would turn a mistyped field into a key that controls whatever
+        // happens to be loudest, which is the failure the parameter exists to
+        // prevent.
+        assert!(!app_matches("Spotify.exe", ""));
+        assert!(!app_matches("Spotify.exe", "exe:"));
     }
 }
