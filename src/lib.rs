@@ -160,8 +160,11 @@ impl Addon for MediaSession {
     }
 
     fn read_signals(&mut self) -> Reading {
-        match platform::now_playing(None) {
-            Some(n) => Reading::Values(vec![("playing", n.playing)]),
+        // `playing`, not `now_playing`. This runs twice a second and needs one
+        // boolean; the version that fetched the track title and artist and
+        // then discarded them is what SC-005 caught.
+        match platform::playing(None) {
+            Some(playing) => Reading::Values(vec![("playing", playing)]),
             None => Reading::Unavailable("nothing is playing".to_owned()),
         }
     }
@@ -177,8 +180,62 @@ mod platform {
     use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager as Manager;
     use windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus as Status;
 
+    use std::cell::RefCell;
+    use std::time::{Duration, Instant};
+
     use super::NowPlaying;
     use nobble_addon_sdk::app_matches;
+
+    /// How long a requested session manager is kept before being thrown away.
+    ///
+    /// **`RequestAsync` leaks**, and this is the number that bounds it.
+    /// Measured under SC-005: calling it twice a second cost +0.313 points of
+    /// CPU and +0.72 MB of working set **per minute**, linearly, for as long as
+    /// the measurement ran — 43 MB an hour, which reaches the addon memory cap
+    /// in under six hours. With the manager kept, the same window is flat at
+    /// 0.08% of a core and 15.0 MB.
+    ///
+    /// Five minutes rather than "for ever" because of what the previous comment
+    /// here was worried about — see [`manager`]. At this rate the call happens
+    /// twelve times an hour instead of seven thousand two hundred.
+    const MANAGER_TTL: Duration = Duration::from_secs(300);
+
+    thread_local! {
+        /// The manager, and when it was requested.
+        static MANAGER: RefCell<Option<(Manager, Instant)>> = const { RefCell::new(None) };
+    }
+
+    /// The session manager, requested at most once every [`MANAGER_TTL`].
+    ///
+    /// # What the comment that used to be here got right, and what it conflated
+    ///
+    /// It said a cached object "goes stale when the playing application
+    /// changes, and the failure is silent". That is true of a **session** and
+    /// not of the **manager**: a session belongs to one application and dies
+    /// with it, whereas the manager is the per-user service that is *asked*
+    /// which sessions exist. Nothing below caches a session — every call still
+    /// goes through `GetCurrentSession` or `GetSessions` on a live manager, so
+    /// the freshness that comment was protecting is exactly preserved.
+    ///
+    /// The TTL is there because the distinction is an argument rather than a
+    /// proof. If the manager can go bad in some way this does not anticipate,
+    /// it self-heals within five minutes instead of lasting until the addon is
+    /// restarted — and a failed call cannot be used as the trigger, because
+    /// "nothing is playing" arrives as an error too, so re-requesting on error
+    /// would re-request on every idle poll and put the leak straight back.
+    fn manager() -> Option<Manager> {
+        MANAGER.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            if let Some((manager, at)) = slot.as_ref()
+                && at.elapsed() < MANAGER_TTL
+            {
+                return Some(manager.clone());
+            }
+            let fresh = Manager::RequestAsync().ok()?.join().ok()?;
+            *slot = Some((fresh.clone(), Instant::now()));
+            Some(fresh)
+        })
+    }
 
     /// The session a binding meant, or nothing.
     ///
@@ -187,13 +244,9 @@ mod platform {
     /// every session and picks the match, which is what makes a key keep
     /// controlling Spotify while a browser tab plays over the top.
     ///
-    /// Every call re-requests the manager rather than caching one. The cached
-    /// object goes stale when the playing application changes, and the failure
-    /// is silent — the next command goes to an application that has closed.
-    /// This costs a COM call on a worker thread, which is not on the input
-    /// path.
+    /// Asked afresh every call. Only the manager is kept; see [`manager`].
     fn session(target: Option<&str>) -> Option<Session> {
-        let manager = Manager::RequestAsync().ok()?.join().ok()?;
+        let manager = manager()?;
         let Some(app) = target else {
             return manager.GetCurrentSession().ok();
         };
@@ -201,6 +254,26 @@ mod platform {
             s.SourceAppUserModelId()
                 .is_ok_and(|id| app_matches(&id.to_string(), app))
         })
+    }
+
+    /// Whether something is playing, without asking what.
+    ///
+    /// The polled path, and it exists because the one it replaced fetched the
+    /// track's title and artist through `TryGetMediaPropertiesAsync` and then
+    /// used neither. Twice a second, for a boolean.
+    ///
+    /// It is also slightly *more* truthful than what it replaced: a session
+    /// whose metadata cannot be read used to report "nothing is playing", when
+    /// what is actually known is that something is playing and is not saying
+    /// what.
+    pub fn playing(target: Option<&str>) -> Option<bool> {
+        let session = session(target)?;
+        session
+            .GetPlaybackInfo()
+            .ok()?
+            .PlaybackStatus()
+            .ok()
+            .map(|s| s == Status::Playing)
     }
 
     pub fn availability() -> Availability {
@@ -279,6 +352,10 @@ mod platform {
     }
 
     pub fn now_playing(_target: Option<&str>) -> Option<NowPlaying> {
+        None
+    }
+
+    pub fn playing(_target: Option<&str>) -> Option<bool> {
         None
     }
 
