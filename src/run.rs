@@ -9,11 +9,11 @@ use std::sync::{Arc, Mutex};
 
 use crate::addon::{
     Addon, AddonAction, AddonError, AddonParam, AddonSetting, AddonSignal, Availability,
-    CredentialHandle, Credentials, Invocation, ParamKind, Reading, Trigger,
+    CredentialHandle, Credentials, Invocation, ParamKind, Permission, Reading, Trigger,
 };
 use crate::protocol::{
     ActionDecl, Answer, Ask, AvailabilityDecl, Description, FailureKind, PROTOCOL, ParamDecl,
-    ReadingDecl, Reply, Request, SettingDecl, SignalDecl,
+    PermissionDecl, ReadingDecl, Reply, Request, SettingDecl, SignalDecl,
 };
 
 /// Serve an addon on stdin and stdout, until told to stop.
@@ -148,6 +148,32 @@ fn describe<A: Addon>(addon: &A) -> Description {
         actions: addon.actions().iter().map(action_decl).collect(),
         signals: addon.signals().iter().map(signal_decl).collect(),
         settings: addon.settings().iter().map(setting_decl).collect(),
+        permissions: addon.permissions().iter().map(permission_decl).collect(),
+    }
+}
+
+fn permission_decl(p: &Permission) -> PermissionDecl {
+    match *p {
+        Permission::Network { host, reason } => PermissionDecl::Network {
+            host: host.to_owned(),
+            reason: reason.to_owned(),
+        },
+        Permission::Files {
+            path,
+            write,
+            reason,
+        } => PermissionDecl::Files {
+            path: path.to_owned(),
+            write,
+            reason: reason.to_owned(),
+        },
+        Permission::Launch { program, reason } => PermissionDecl::Launch {
+            program: program.to_owned(),
+            reason: reason.to_owned(),
+        },
+        Permission::Credentials { reason } => PermissionDecl::Credentials {
+            reason: reason.to_owned(),
+        },
     }
 }
 

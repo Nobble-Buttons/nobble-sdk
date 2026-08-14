@@ -289,6 +289,87 @@ pub struct AddonSetting {
     pub secret: bool,
 }
 
+/// Something an addon needs to be allowed to do (FR-046).
+///
+/// Declared as a set the addon needs *in order to work*, not as a wish list:
+/// the user grants or refuses the whole declaration, because a half-granted
+/// addon is a matrix of broken states nobody asked for and every one of them
+/// would have to be designed.
+///
+/// # Only one of these is enforced, and this type does not pretend otherwise
+///
+/// [`Self::Credentials`] is real: the daemon holds the credential store and an
+/// addon can only ask, so a refusal is a refusal. The other three are
+/// **declarations shown to the user**, and an ungranted addon is simply not
+/// started — which is a genuine control, because a process that is not running
+/// opens no sockets. What is *not* true is that a *running* addon is confined
+/// to what it declared. Nothing stops a granted addon reaching a host it never
+/// mentioned.
+///
+/// That gap is [ADR-0016]'s, deliberately, and it is named in the interface
+/// rather than papered over: "may reach api.spotify.com" must not be read as
+/// "and nothing else" until platform confinement makes it true.
+///
+/// [ADR-0016]: ../../../docs/decisions/0016-addon-process-boundary.md
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Permission {
+    /// Reach a host over the network.
+    ///
+    /// One host per declaration rather than a list, so the interface can show
+    /// them as separate lines and so a diff between two versions of an addon
+    /// reads as "it now also wants X".
+    Network {
+        /// The host, as it appears in a URL: `api.spotify.com`.
+        host: &'static str,
+        /// Why, in a few words, shown next to it. An addon that cannot explain
+        /// what it wants a host for is asking the user to guess.
+        reason: &'static str,
+    },
+    /// Read or write files under a path.
+    Files {
+        /// The directory or file, as a path the user would recognise.
+        path: &'static str,
+        /// Whether it writes, or only reads. The distinction is the whole
+        /// difference between "reads your project list" and "can delete it".
+        write: bool,
+        /// Why.
+        reason: &'static str,
+    },
+    /// Start another program.
+    Launch {
+        /// What it starts. `the default browser` is a legitimate answer here —
+        /// this is shown to a person, not matched against anything.
+        program: &'static str,
+        /// Why.
+        reason: &'static str,
+    },
+    /// Keep credentials of its own, in the OS credential store.
+    ///
+    /// The enforced one. Ungranted, the daemon answers every credential ask
+    /// with a refusal, which an addon must survive: it is the same answer as
+    /// "nothing stored yet", and an addon that handles being signed out
+    /// already handles this.
+    Credentials {
+        /// Why. "To stay signed in to your Spotify account" — the account is
+        /// the thing the user is actually deciding about.
+        reason: &'static str,
+    },
+}
+
+impl Permission {
+    /// Why the addon says it needs this.
+    #[must_use]
+    pub const fn reason(&self) -> &'static str {
+        match self {
+            Self::Network { reason, .. }
+            | Self::Files { reason, .. }
+            | Self::Launch { reason, .. }
+            | Self::Credentials { reason } => reason,
+        }
+    }
+}
+
 /// A named boolean fact an addon publishes about its target.
 ///
 /// FR-062. Recording, streaming, in a call, muted, playing. An overlay can be
@@ -520,6 +601,22 @@ pub trait Addon: Send {
     /// Defaulted for the same reason as signals: most addons need nothing, and
     /// the ones that do are the exception.
     fn settings(&self) -> &'static [AddonSetting] {
+        &[]
+    }
+
+    /// Everything it needs to be *allowed* to do (FR-046).
+    ///
+    /// Defaulted to nothing, and that default is the honest one for more
+    /// addons than it looks: an addon that drives a local API — the media
+    /// session, the audio mixer — reaches no host, opens no file and keeps no
+    /// account, so it has nothing to ask for and the user is never asked.
+    ///
+    /// **An addon declaring anything here does not run until the user grants
+    /// it.** So the list is what the addon needs, not what it might one day
+    /// like: every entry is a question somebody has to answer before the addon
+    /// works at all, and an addon that asks for more than it uses is training
+    /// people to grant without reading.
+    fn permissions(&self) -> &'static [Permission] {
         &[]
     }
 

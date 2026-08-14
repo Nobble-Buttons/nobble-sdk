@@ -241,6 +241,53 @@ pub struct Description {
     /// Everything it needs configuring.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub settings: Vec<SettingDecl>,
+    /// Everything it needs to be allowed to do (FR-046).
+    ///
+    /// Omitted when empty, which is the ordinary case — and the omission is
+    /// load-bearing rather than tidy: an addon built against an older SDK sends
+    /// no field, and "declares nothing" is exactly the right reading of that.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub permissions: Vec<PermissionDecl>,
+}
+
+/// One permission, owned. Mirrors [`Permission`](crate::Permission).
+///
+/// Tagged by kind with the target as a separate field, rather than one string
+/// per variant, so a consumer that does not recognise a future kind can still
+/// show the user *something* — the reason, at least — instead of dropping a
+/// permission silently. Dropping one is the failure that matters here: it
+/// would understate what the addon asked for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PermissionDecl {
+    /// Reach a host over the network.
+    Network {
+        /// The host.
+        host: String,
+        /// Why.
+        reason: String,
+    },
+    /// Read or write files under a path.
+    Files {
+        /// The path.
+        path: String,
+        /// Whether it writes as well as reads.
+        write: bool,
+        /// Why.
+        reason: String,
+    },
+    /// Start another program.
+    Launch {
+        /// What it starts.
+        program: String,
+        /// Why.
+        reason: String,
+    },
+    /// Keep credentials in the OS credential store. The enforced one.
+    Credentials {
+        /// Why.
+        reason: String,
+    },
 }
 
 /// One action, owned. Mirrors [`AddonAction`](crate::AddonAction).
