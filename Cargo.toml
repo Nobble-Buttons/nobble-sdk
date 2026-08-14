@@ -1,0 +1,28 @@
+[package]
+name = "nobble-addon-sdk"
+description = "Write a Nobble addon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# Deliberately no Nobble dependencies, and this is the one rule of this crate.
+#
+# FR-044: an addon must be buildable against only the public repositories.
+# FR-050: official addons use the same public SDK as third-party ones, with no
+# private interfaces. Both hold only if this list stays free of `path =`
+# entries — a Nobble crate here is a private interface leaking into the SDK,
+# and T073 checks for exactly that mechanically rather than by review.
+#
+# `version.workspace` above is a build-time convenience while this lives in the
+# daemon's workspace. It goes when the SDK moves to its own repository (T071),
+# which is the point at which FR-049's independent versioning starts to mean
+# something.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true
