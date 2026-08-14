@@ -31,8 +31,13 @@ fn main() {
     let every: u64 = args.next().and_then(|a| a.parse().ok()).unwrap_or(2);
 
     let mut addon = MediaSession::new();
-    println!("watching for {minutes} minutes, every {every}s. Change what is playing underneath it.");
-    println!("{:>6}  {:<12}  {:<8}  {:<34}  title", "at", "available", "playing", "source");
+    println!(
+        "watching for {minutes} minutes, every {every}s. Change what is playing underneath it."
+    );
+    println!(
+        "{:>6}  {:<12}  {:<8}  {:<34}  title",
+        "at", "available", "playing", "source"
+    );
 
     let start = Instant::now();
     let deadline = Duration::from_secs(minutes * 60);
