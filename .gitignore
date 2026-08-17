@@ -1,0 +1,29 @@
+# Filtered to what this repository actually contains. ADR-0010's split lost the
+# root `.gitignore` to `git subtree split` and swept 2038 files of `target/`
+# into the first commit before anyone noticed; the quiet half of that failure
+# was a secrets rule going missing at the same time. So this exists before the
+# first crate lands, not after.
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.token
+secrets.*
+# ...but not source files that merely deal with the subject. In the daemon's
+# repository `secrets.*` swallowed a real module and every fresh clone failed to
+# build. Nothing here is named that today; the exception is kept so that adding
+# one does not reintroduce the same silence.
+!secrets.rs
+
+# ── Rust ──────────────────────────────────────────────────────────────────────
+target/
+
+# ── OS / editor ───────────────────────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+*.swp
+*.swo

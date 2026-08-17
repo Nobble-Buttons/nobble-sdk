@@ -1,0 +1,118 @@
+# CI for the SDK and the two official addons published with it.
+#
+# The point of this repository is that it builds on its own, with no access to
+# the daemon and none to the hardware. That is not a nice property, it is the
+# acceptance test for the whole repository split (ADR-0010): if this workflow
+# ever needs a private checkout, the boundary is in the wrong place.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup component add rustfmt
+      - run: cargo fmt --all --check
+
+  rust:
+    name: Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup component add clippy
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+      # FR-050: official addons are built on the same public SDK as third-party
+      # ones, with no private interfaces.
+      #
+      # This moved here with the crates. Inside the daemon's repository it was a
+      # real guard, because nobble-core and nobble-service were one `path =`
+      # away. Here there is no private crate to reach for, so what it now
+      # catches is the way back in: somebody adding a git or path dependency on
+      # a Nobble crate that lives elsewhere. Cheap, and the rule it enforces is
+      # the reason this repository exists.
+      #
+      # `--target all` because a dependency can be platform-gated, and an addon
+      # reaching out only under cfg(windows) would otherwise pass on the Linux
+      # leg and fail the claim.
+      - name: Addons depend on the SDK and nothing else of ours
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -e
+          status=0
+          for manifest in crates/nobble-addon-*/Cargo.toml; do
+            crate=$(basename "$(dirname "$manifest")")
+            [ "$crate" = "nobble-addon-sdk" ] && continue
+            leaked=$(cargo tree -p "$crate" -e normal --target all --prefix none \
+              | grep -oE '^nobble-[a-z-]+' | sort -u \
+              | grep -vE "^($crate|nobble-addon-sdk)$" || true)
+            if [ -n "$leaked" ]; then
+              echo "::error file=$manifest::$crate reaches past the SDK into: $(echo $leaked | tr '\n' ' '). An official addon must build against only what a third party can (FR-044, FR-050)."
+              status=1
+            fi
+          done
+          exit $status
+
+      # The SDK's own rule, which is stronger than the addons': it may depend on
+      # no Nobble crate at all. A `path =` entry here would be a private
+      # interface leaking into the published one, and it would not be obvious in
+      # review because it would build perfectly.
+      - name: The SDK depends on nothing of ours
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -e
+          leaked=$(cargo tree -p nobble-addon-sdk -e normal --target all --prefix none \
+            | grep -oE '^nobble-[a-z-]+' | sort -u \
+            | grep -v '^nobble-addon-sdk$' || true)
+          if [ -n "$leaked" ]; then
+            echo "::error file=crates/nobble-addon-sdk/Cargo.toml::The SDK depends on: $(echo $leaked | tr '\n' ' '). It may depend on no Nobble crate (FR-044)."
+            exit 1
+          fi
+          echo "the SDK depends on nothing of ours"
+
+  # Licence compliance is checked in nobble-desktop, which mounts this
+  # repository as a submodule and runs tools/check-licences.mjs across both
+  # workspaces. Not duplicated here on purpose -- two copies of a licence
+  # policy is how they come to disagree.
+  #
+  # The gap that leaves: a pull request against *this* repository alone does not
+  # get that check. Acceptable while the repository is private and the whole
+  # dependency list is serde plus the platform crates; it must be closed before
+  # this opens to outside contributions, and the honest fix is shared tooling
+  # rather than a second copy.

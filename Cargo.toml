@@ -1,0 +1,55 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/nobble-addon-media",
+    "crates/nobble-addon-sdk",
+    "crates/nobble-addon-volume",
+]
+
+# Two rules govern what may live here, and the second is the less obvious one.
+#
+# **Nothing may depend on a Nobble crate other than `nobble-addon-sdk`.** That
+# is what makes the official addons here worked examples rather than privileged
+# ones (FR-050). It used to be a claim CI checked inside the daemon's
+# repository; here it is also a fact about where the code lives, because there
+# is no private crate to reach for.
+#
+# **No addon that integrates a third party belongs here.** `media` and `volume`
+# ask the operating system what is playing and how loud it is. `spotify` and
+# `discord` stay in the daemon's repository, and not for want of tidiness:
+#
+#   - a partner's developer terms come with the addon, and a public repository
+#     is forked, which multiplies whatever those terms constrain;
+#   - `spotify` carries a shared client id that every fork would spend, since
+#     the quota is metered per application rather than per user;
+#   - a partner addon is the one that grows daemon-side tooling. `spotify`'s
+#     example writes to the daemon's own credential vault, so it has
+#     dev-dependencies on three private crates and could not build here at all.
+#
+# An addon that needs an account, an OAuth flow or a rate limit is also a worse
+# example than one that does not: a reader can run `volume` immediately.
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+repository = "https://github.com/Nobble-Buttons/nobble-sdk"
+# Not on crates.io yet. Publishing is a separate decision from opening the
+# repository, and an unpublishable version number is easier to undo than a
+# published one.
+publish = false
+
+# Only `nobble-addon-sdk` inherits these. `media` and `volume` override
+# `unsafe_code`, because they talk to a platform and cannot forbid it -- the
+# reason is written in each crate's own manifest, next to the dependency that
+# forces it.
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Public API types are matched exhaustively by the daemon on purpose: adding a
+# variant should break the build so every site is revisited.
+module_name_repetitions = "allow"

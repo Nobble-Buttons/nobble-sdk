@@ -1,0 +1,22 @@
+# Normalise line endings. Windows-authored, but toolchains and CI are not.
+* text=auto eol=lf
+
+# Scripts must stay LF regardless of platform.
+*.sh  text eol=lf
+
+# Windows-only scripts need CRLF.
+*.bat  text eol=crlf
+*.ps1  text eol=crlf
+
+# Keep generated lockfiles out of diffs.
+package-lock.json  -diff
+Cargo.lock         -diff
+
+# ── Binary assets ─────────────────────────────────────────────────────────────
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.webp  binary
+*.ico   binary
+*.gif   binary
+*.pdf   binary
