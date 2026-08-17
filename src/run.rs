@@ -559,8 +559,7 @@ mod tests {
         )
         .expect("served");
 
-        let Reply::Failed { kind, detail } =
-            serde_json::from_str(&out.lines()[0]).expect("parse")
+        let Reply::Failed { kind, detail } = serde_json::from_str(&out.lines()[0]).expect("parse")
         else {
             panic!("expected a failure, got {:?}", out.lines()[0]);
         };
