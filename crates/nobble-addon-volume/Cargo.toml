@@ -1,0 +1,38 @@
+[package]
+name = "nobble-addon-volume"
+description = "Per-application and system volume through Core Audio, as a Nobble addon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# One Nobble dependency, and it is the SDK. CI asserts that for every
+# `nobble-addon-*` (SC-018).
+[dependencies]
+nobble-addon-sdk = { path = "../nobble-addon-sdk" }
+
+# Core Audio. Win32 rather than WinRT: WinRT has no per-application volume at
+# all, and the mixer Windows already shows people is exactly what a fader
+# should move.
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
+    "Win32_System_Com",
+    # `IMMDevice::Activate` takes an optional PROPVARIANT, so it is gated behind
+    # both of these even though we always pass None.
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+]
+
+# Cannot forbid unsafe: it talks to the platform. Confining that to the crates
+# that must is the point — and now the confinement is a process boundary too.
+[lints.rust]
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
