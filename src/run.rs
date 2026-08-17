@@ -9,8 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::addon::{
     Addon, AddonAction, AddonError, AddonParam, AddonSetting, AddonSignal, Availability,
-    CredentialHandle, Credentials, DeviceAction, DeviceKeystroke, Invocation, ParamKind, Permission,
-    Reading, Trigger,
+    CredentialHandle, Credentials, DeviceAction, DeviceKeystroke, Invocation, Permission, Reading,
 };
 use crate::protocol::{
     ActionDecl, Answer, Ask, AvailabilityDecl, Description, DeviceActionDecl, FailureKind,
@@ -213,11 +212,7 @@ fn action_decl(a: &AddonAction) -> ActionDecl {
         id: a.id.to_owned(),
         name: a.name.to_owned(),
         description: a.description.to_owned(),
-        trigger: match a.trigger {
-            Trigger::Momentary => "momentary",
-            Trigger::Continuous => "continuous",
-        }
-        .to_owned(),
+        trigger: a.trigger.as_wire().to_owned(),
         params: a.params.iter().map(param_decl).collect(),
     }
 }
@@ -266,11 +261,7 @@ fn param_decl(p: &AddonParam) -> ParamDecl {
         id: p.id.to_owned(),
         name: p.name.to_owned(),
         description: p.description.to_owned(),
-        kind: match p.kind {
-            ParamKind::Text => "text",
-            ParamKind::App => "app",
-        }
-        .to_owned(),
+        kind: p.kind.as_wire().to_owned(),
         required: p.required,
     }
 }
@@ -375,7 +366,7 @@ impl<R: BufRead + Send, W: Write + Send> Credentials for WireCredentials<R, W> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::addon::{AddonAction, Availability};
+    use crate::addon::{AddonAction, Availability, Trigger};
     use std::io::Cursor;
 
     /// A writer the test can still read after `serve` has taken it.

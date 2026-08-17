@@ -83,6 +83,58 @@ pub enum Trigger {
     Continuous,
 }
 
+impl Trigger {
+    /// How it is spelled on a wire.
+    ///
+    /// # Why this is a method and not a `match` at each end
+    ///
+    /// Because it was three `match`es, and they had to agree without anything
+    /// making them. The addon-to-daemon encoder lived in
+    /// [`run`](crate::run), the daemon-to-interface encoder in
+    /// `nobble_rpc::AddonDto::of`, and the decoder between them was
+    /// `if a.trigger == "continuous"` in the daemon — with a TypeScript
+    /// `=== "continuous"` at the far end comparing against the result. Five
+    /// hand-written copies of two strings, on a round trip where a single
+    /// disagreement makes a fader silently behave like a key: the decoder's
+    /// `else` branch is `Momentary`, so a renamed encoding does not fail, it
+    /// degrades.
+    ///
+    /// Constitution VI is about exactly that, and the remedy it prefers —
+    /// generated bindings — is unavailable inside one language. One definition
+    /// on the type is the next thing: `nobble-core` re-exports this type, so
+    /// every crate downstream is looking at the same `impl` rather than at its
+    /// own copy of the answer.
+    ///
+    /// **Not a display name.** These are protocol tokens, lowercase because
+    /// that is what is on the wire, and a renaming here is a breaking protocol
+    /// change rather than a wording change. An interface wanting *Momentary*
+    /// with a capital M writes that itself.
+    #[must_use]
+    pub const fn as_wire(self) -> &'static str {
+        match self {
+            Self::Momentary => "momentary",
+            Self::Continuous => "continuous",
+        }
+    }
+
+    /// Read one back, or `None` if this build has no name for it.
+    ///
+    /// An `Option` rather than a default, deliberately. The daemon's decode
+    /// used to fall back to [`Self::Momentary`] for anything unrecognised,
+    /// which turns an addon built against a newer SDK into a fader that behaves
+    /// like a key with nothing reported — a Principle IV collapse. Whether to
+    /// refuse or to default is the caller's decision to state out loud; this
+    /// only declines to make it for them.
+    #[must_use]
+    pub fn from_wire(s: &str) -> Option<Self> {
+        match s {
+            "momentary" => Some(Self::Momentary),
+            "continuous" => Some(Self::Continuous),
+            _ => None,
+        }
+    }
+}
+
 /// What a parameter holds, so an interface can offer the right editor.
 ///
 /// A hint, not a storage type — every parameter is stored as a string
@@ -97,6 +149,43 @@ pub enum ParamKind {
     /// reports. The interface can offer "the application you were just in"
     /// rather than asking someone to type an executable name from memory.
     App,
+}
+
+impl ParamKind {
+    /// How it is spelled on a wire. See [`Trigger::as_wire`] for why this is
+    /// here rather than at each end.
+    ///
+    /// **Exhaustive, and that is the point of putting it in this crate.** This
+    /// type is `#[non_exhaustive]`, so every match on it *outside* the SDK must
+    /// carry a wildcard — which is how `nobble_rpc::param_kind_name` came to
+    /// have a `ParamKind::Text | _ => "text"` arm defending against a variant
+    /// that cannot exist in a build that compiled. Here the wildcard is not
+    /// required, so adding a kind fails to compile at the one site that has to
+    /// decide what it is called.
+    #[must_use]
+    pub const fn as_wire(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::App => "app",
+        }
+    }
+
+    /// Read one back, or `None` if this build has no name for it.
+    ///
+    /// Unlike [`Trigger::from_wire`], defaulting is the *documented* behaviour
+    /// for a caller here: this type's own note says widening it is additive and
+    /// a client that does not recognise a kind should offer a text box and stay
+    /// useful. The `Option` is still the honest return, because "I do not know
+    /// this one" and "this one is text" are different facts and only the caller
+    /// knows whether the difference matters to it.
+    #[must_use]
+    pub fn from_wire(s: &str) -> Option<Self> {
+        match s {
+            "text" => Some(Self::Text),
+            "app" => Some(Self::App),
+            _ => None,
+        }
+    }
 }
 
 /// Whether something the platform named is the application a binding meant.
@@ -872,7 +961,47 @@ pub trait Addon: Send {
 
 #[cfg(test)]
 mod tests {
-    use super::app_matches;
+    use super::{ParamKind, Trigger, app_matches};
+
+    /// Every variant survives the round trip its own encoder produces.
+    ///
+    /// The list is written out rather than iterated, because there is no
+    /// `Trigger::all()` and inventing one to test with would be a second place
+    /// that has to know every variant — the failure this whole arrangement is
+    /// about. A new variant makes `as_wire` fail to compile; this is here so
+    /// that a *renamed* one, which compiles perfectly, fails something.
+    #[test]
+    fn a_trigger_survives_its_own_spelling() {
+        for t in [Trigger::Momentary, Trigger::Continuous] {
+            assert_eq!(Trigger::from_wire(t.as_wire()), Some(t), "{t:?}");
+        }
+        assert_eq!(Trigger::from_wire("Continuous"), None, "case matters");
+        assert_eq!(Trigger::from_wire(""), None);
+    }
+
+    /// The tokens themselves, pinned. The round trip above agrees with itself
+    /// whatever both halves are renamed to; these two strings are compared
+    /// against by a daemon decoding an addon's declaration and by TypeScript in
+    /// the settings window, neither of which this crate can see.
+    #[test]
+    fn the_trigger_tokens_are_these_two() {
+        assert_eq!(Trigger::Momentary.as_wire(), "momentary");
+        assert_eq!(Trigger::Continuous.as_wire(), "continuous");
+    }
+
+    #[test]
+    fn a_param_kind_survives_its_own_spelling() {
+        for k in [ParamKind::Text, ParamKind::App] {
+            assert_eq!(ParamKind::from_wire(k.as_wire()), Some(k), "{k:?}");
+        }
+        assert_eq!(ParamKind::from_wire("colour"), None);
+    }
+
+    #[test]
+    fn the_param_kind_tokens_are_these_two() {
+        assert_eq!(ParamKind::Text.as_wire(), "text");
+        assert_eq!(ParamKind::App.as_wire(), "app");
+    }
 
     #[test]
     fn an_application_matches_whichever_form_each_side_is_in() {
