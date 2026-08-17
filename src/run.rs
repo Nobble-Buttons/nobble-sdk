@@ -8,13 +8,14 @@ use std::io::{BufRead, BufReader, Write};
 use std::sync::{Arc, Mutex};
 
 use crate::addon::{
-    Addon, AddonAction, AddonError, AddonParam, AddonSetting, AddonSignal, Availability,
-    CredentialHandle, Credentials, DeviceAction, DeviceKeystroke, Invocation, Permission, Reading,
+    Addon, AddonAction, AddonChoices, AddonError, AddonParam, AddonSetting, AddonSignal,
+    Availability, CredentialHandle, Credentials, DeviceAction, DeviceKeystroke, Invocation,
+    Permission, Reading,
 };
 use crate::protocol::{
-    ActionDecl, Answer, Ask, AvailabilityDecl, Description, DeviceActionDecl, FailureKind,
-    KeystrokeDecl, PROTOCOL, ParamDecl, PermissionDecl, ReadingDecl, Reply, Request, SettingDecl,
-    SignalDecl,
+    ActionDecl, Answer, Ask, AvailabilityDecl, ChoiceDecl, ChoicesDecl, Description,
+    DeviceActionDecl, FailureKind, KeystrokeDecl, PROTOCOL, ParamDecl, PermissionDecl, ReadingDecl,
+    Reply, Request, SettingDecl, SignalDecl,
 };
 
 /// Serve an addon on stdin and stdout, until told to stop.
@@ -116,7 +117,7 @@ pub fn serve<A: Addon, R: BufRead + Send + 'static, W: Write + Send + 'static>(
 fn perform<A: Addon>(
     addon: &mut A,
     action: &str,
-    params: &BTreeMap<String, String>,
+    params: &BTreeMap<String, crate::addon::ParamValue>,
     value: Option<u16>,
 ) -> Reply {
     // ADR-0021's backward-compatibility half. A daemon that understands
@@ -176,6 +177,7 @@ fn describe<A: Addon>(addon: &A) -> Description {
             .iter()
             .map(device_action_decl)
             .collect(),
+        choices: addon.choices().iter().map(choices_decl).collect(),
         signals: addon.signals().iter().map(signal_decl).collect(),
         settings: addon.settings().iter().map(setting_decl).collect(),
         permissions: addon.permissions().iter().map(permission_decl).collect(),
@@ -263,6 +265,24 @@ fn param_decl(p: &AddonParam) -> ParamDecl {
         description: p.description.to_owned(),
         kind: p.kind.as_wire().to_owned(),
         required: p.required,
+        multiple: p.multiple,
+        choices: p.choices.map(ToOwned::to_owned),
+    }
+}
+
+fn choices_decl(c: &AddonChoices) -> ChoicesDecl {
+    ChoicesDecl {
+        id: c.id.to_owned(),
+        name: c.name.to_owned(),
+        live: c.live,
+        values: c
+            .values
+            .iter()
+            .map(|v| ChoiceDecl {
+                value: v.value.to_owned(),
+                label: v.label.to_owned(),
+            })
+            .collect(),
     }
 }
 

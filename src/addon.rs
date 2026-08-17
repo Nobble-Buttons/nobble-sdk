@@ -14,6 +14,8 @@ use core::fmt;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
+
 /// Where an addon keeps its own credentials (ADR-0013, FR-046).
 ///
 /// # Why there is no `addon` parameter
@@ -228,6 +230,128 @@ pub fn app_matches(reported: &str, target: &str) -> bool {
     !stem.is_empty() && reported.to_ascii_lowercase().contains(&stem)
 }
 
+/// What one parameter holds: a value, or several.
+///
+/// [ADR-0022]. A parameter is single-valued unless its declaration says
+/// otherwise, and both shapes live in the same map because a binding stores one
+/// map whatever its parameters declared.
+///
+/// # Why an enum rather than always a list
+///
+/// Because of what it costs on disk. `#[serde(untagged)]` renders these as
+/// `app = "spotify"` and `apps = ["discord", "game"]` in the same TOML table,
+/// so a configuration written before lists existed parses unchanged and needs
+/// no migration rung. Making every value a list would have rewritten every
+/// binding anybody has, to express something almost none of them use.
+///
+/// It is also what `006-FR-024a-i` asks for in the negative: a list "MUST be
+/// widened rather than worked around with a delimiter convention the interface
+/// cannot render". A TOML array is how TOML writes a list. There is no
+/// convention to learn, and nothing to escape.
+///
+/// [ADR-0022]: ../../../docs/decisions/0022-addon-supplied-choices.md
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ParamValue {
+    /// One value. What every parameter was before ADR-0022.
+    One(String),
+    /// Several, in the order the user arranged them.
+    Many(Vec<String>),
+}
+
+impl ParamValue {
+    /// The single value, or `None` if this holds a list.
+    ///
+    /// **Not the first element**, deliberately. An addon that declared a
+    /// single-valued parameter and receives a list has been given something it
+    /// did not ask for, and quietly using the first entry would silently ignore
+    /// the rest — the failure being a key that mutes one of the three
+    /// applications somebody named. `None` reaches the required-parameter check
+    /// in `Registry::perform` and fails loudly instead.
+    #[must_use]
+    pub fn one(&self) -> Option<&str> {
+        match self {
+            Self::One(v) if !v.is_empty() => Some(v),
+            Self::One(_) | Self::Many(_) => None,
+        }
+    }
+
+    /// Every value, whether this holds one or several.
+    ///
+    /// A single value reads as a list of one, because an addon that declared
+    /// `multiple` should not have to care how the user happened to fill it in —
+    /// and a file written before lists existed contains exactly that case.
+    /// Empty strings are dropped for the same reason [`Self::one`] rejects
+    /// them: a cleared box is not a configured value.
+    #[must_use]
+    pub fn all(&self) -> Vec<&str> {
+        match self {
+            Self::One(v) => {
+                if v.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![v.as_str()]
+                }
+            }
+            Self::Many(vs) => vs
+                .iter()
+                .map(String::as_str)
+                .filter(|s| !s.is_empty())
+                .collect(),
+        }
+    }
+}
+
+impl From<&str> for ParamValue {
+    fn from(v: &str) -> Self {
+        Self::One(v.to_owned())
+    }
+}
+
+/// One option a user can pick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AddonChoice {
+    /// What gets stored in the binding.
+    pub value: &'static str,
+    /// What the user reads.
+    pub label: &'static str,
+}
+
+/// A named list of options an addon offers, which a parameter can draw from.
+///
+/// [ADR-0022]. **Named rather than attached to one parameter**, and the third
+/// reason below is the one that decided it:
+///
+/// - a live fetch is then one addon and one id, where a parameter would need
+///   `(addon, action, param)` — and a *setting*'s parameter has no action;
+/// - two parameters can share one list, so a pin and a priority pointing at the
+///   same people cannot show two different rosters;
+/// - **composition belongs to the addon.** `006-FR-011b` wants the current call,
+///   then people remembered from previous calls, then free text — an ordering
+///   that is Discord's business. With a named source the addon returns one flat
+///   ordered list and the interface renders it, so "remembered people" needs no
+///   interface support at all.
+///
+/// [ADR-0022]: ../../../docs/decisions/0022-addon-supplied-choices.md
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AddonChoices {
+    /// Stable id, unique within the addon. A parameter names this.
+    pub id: &'static str,
+    /// What the list is, for the editor's heading and its empty state.
+    pub name: &'static str,
+    /// Whether the values must be asked for rather than read from below.
+    ///
+    /// A **declared** source is fixed for the life of the daemon and arrives
+    /// with everything else. A **live** one changes — a voice roster, the
+    /// playlists on an account — and is fetched when somebody opens the picker
+    /// and at no other time. Not polled: a timer would cost idle CPU for a
+    /// picker nobody has open, which `006-FR-027` forbids and `006-SC-008`
+    /// measures.
+    pub live: bool,
+    /// Every value, for a declared source. Empty when [`Self::live`].
+    pub values: &'static [AddonChoice],
+}
+
 /// One thing an action needs to know, declared so an interface can ask for it.
 ///
 /// The point of declaring rather than parsing a free-text argument: FR-048
@@ -251,6 +375,37 @@ pub struct AddonParam {
     /// media addon's target application is absent for "whatever is playing",
     /// which is the behaviour most people want most of the time.
     pub required: bool,
+    /// Whether it holds several values rather than one (`006-FR-024a-i`).
+    ///
+    /// Orthogonal to [`Self::kind`] on purpose. What a value *means* and how
+    /// many of them there are are different questions, and folding one into the
+    /// other is what produces `AppList`, `ParticipantList`, `PlaylistList` —
+    /// one new kind every time somebody wants a list of something.
+    pub multiple: bool,
+    /// The id of an [`AddonChoices`] this draws its options from, if any.
+    ///
+    /// `None` is free text, which is what every parameter was before ADR-0022
+    /// and what a choice-backed one degrades to when its list is unavailable.
+    pub choices: Option<&'static str>,
+}
+
+impl AddonParam {
+    /// A parameter with nothing set, to build from.
+    ///
+    /// Exists so the next field added here does not break every `const` array
+    /// an addon writes: `AddonParam { id: "app", ..AddonParam::BASE }` compiles
+    /// in a `const`, and adding a field to `BASE` costs its authors nothing.
+    /// **It does not save the arrays that already name every field**, which is
+    /// why the ones in this repository were converted when this was added.
+    pub const BASE: Self = Self {
+        id: "",
+        name: "",
+        description: "",
+        kind: ParamKind::Text,
+        required: false,
+        multiple: false,
+        choices: None,
+    };
 }
 
 /// One thing an addon can be asked to do.
@@ -491,18 +646,18 @@ pub struct DeviceAction {
 /// thing that works until someone restarts the daemon and their volume jumps.
 #[derive(Debug, Clone, Copy)]
 pub struct Invocation<'a> {
-    params: &'a BTreeMap<String, String>,
+    params: &'a BTreeMap<String, ParamValue>,
     value: Option<u16>,
 }
 
 /// Nothing configured, for an action that takes no parameters.
-static NO_PARAMS: std::sync::LazyLock<BTreeMap<String, String>> =
+static NO_PARAMS: std::sync::LazyLock<BTreeMap<String, ParamValue>> =
     std::sync::LazyLock::new(BTreeMap::new);
 
 impl<'a> Invocation<'a> {
     /// A press, with the binding's parameters.
     #[must_use]
-    pub fn press(params: &'a BTreeMap<String, String>) -> Self {
+    pub fn press(params: &'a BTreeMap<String, ParamValue>) -> Self {
         Self {
             params,
             value: None,
@@ -511,7 +666,7 @@ impl<'a> Invocation<'a> {
 
     /// A position, with the binding's parameters.
     #[must_use]
-    pub fn moved(params: &'a BTreeMap<String, String>, value: u16) -> Self {
+    pub fn moved(params: &'a BTreeMap<String, ParamValue>, value: u16) -> Self {
         Self {
             params,
             value: Some(value),
@@ -533,17 +688,46 @@ impl<'a> Invocation<'a> {
     /// Absent and empty are the same answer here. A text box someone cleared
     /// stores `""`, and an addon checking only for absence would then treat a
     /// deliberately blank field as a configured one.
+    /// **A parameter holding a list reads as absent here**, rather than as its
+    /// first entry. See [`ParamValue::one`]: an addon that declared one value
+    /// and silently used the first of several would mute one of the three
+    /// applications somebody named and report nothing.
     #[must_use]
     pub fn param(&self, id: &str) -> Option<&str> {
+        self.params.get(id).and_then(ParamValue::one)
+    }
+
+    /// Every value of one parameter, whether it holds one or several.
+    ///
+    /// The accessor a `multiple` parameter reads. A single value reads as a
+    /// list of one, so an addon does not have to care how the user happened to
+    /// fill it in — and a configuration written before lists existed contains
+    /// exactly that case.
+    #[must_use]
+    pub fn param_all(&self, id: &str) -> Vec<&str> {
+        self.params.get(id).map(ParamValue::all).unwrap_or_default()
+    }
+
+    /// The map as it was stored, for a host that has to forward it verbatim.
+    ///
+    /// Not for addons: an addon wants [`Self::param`] or
+    /// [`Self::param_all`]. This exists because the daemon builds an
+    /// invocation on one side of a pipe and has to put the same thing back on
+    /// the wire on the other, and re-deriving it from the accessors would turn
+    /// a list into whatever the accessors happened to flatten it to.
+    #[must_use]
+    pub fn raw_params(&self) -> &BTreeMap<String, ParamValue> {
         self.params
-            .get(id)
-            .map(String::as_str)
-            .filter(|s| !s.is_empty())
     }
 
     /// Every parameter, for reporting.
-    pub fn params(&self) -> impl Iterator<Item = (&str, &str)> {
-        self.params.iter().map(|(k, v)| (k.as_str(), v.as_str()))
+    ///
+    /// A list renders comma-separated, because this feeds a log line rather
+    /// than anything that parses it back.
+    pub fn params(&self) -> impl Iterator<Item = (&str, String)> {
+        self.params
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.all().join(", ")))
     }
 
     /// The raw position, `0..=16383`, for a continuous action.
@@ -917,6 +1101,19 @@ pub trait Addon: Send {
     /// Defaulted for the same reason as signals: most addons need nothing, and
     /// the ones that do are the exception.
     fn settings(&self) -> &'static [AddonSetting] {
+        &[]
+    }
+
+    /// Named lists its parameters can draw options from (ADR-0022).
+    ///
+    /// Defaulted to nothing, because most parameters are free text and always
+    /// were. Declared here rather than on the parameter so that two parameters
+    /// can share one list — a pin and a priority pointing at the same people
+    /// must not be able to show two different rosters.
+    ///
+    /// A source marked [`AddonChoices::live`] carries no values here; the
+    /// daemon asks for them when somebody opens the picker.
+    fn choices(&self) -> &'static [AddonChoices] {
         &[]
     }
 

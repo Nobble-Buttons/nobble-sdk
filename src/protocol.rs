@@ -131,7 +131,7 @@ pub enum Request {
         /// bare press, and `"params":{},"value":null` on every one of them is
         /// noise in a log somebody is reading to find out what happened.
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-        params: BTreeMap<String, String>,
+        params: BTreeMap<String, crate::addon::ParamValue>,
         /// The fader position for a continuous action, absent for a press.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         value: Option<u16>,
@@ -280,6 +280,13 @@ pub struct Description {
     /// Everything it needs configuring.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub settings: Vec<SettingDecl>,
+    /// Named lists its parameters draw options from (ADR-0022).
+    ///
+    /// Omitted when empty, which is every addon that has none — and an addon
+    /// built against an older SDK sends no field, which reads correctly as
+    /// "declares none".
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<ChoicesDecl>,
     /// Everything it needs to be allowed to do (FR-046).
     ///
     /// Omitted when empty, which is the ordinary case — and the omission is
@@ -452,6 +459,36 @@ pub struct ParamDecl {
     pub kind: String,
     /// Whether the action fails without it.
     pub required: bool,
+    /// Whether it holds several values rather than one (ADR-0022).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub multiple: bool,
+    /// The id of a [`ChoicesDecl`] this draws its options from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choices: Option<String>,
+}
+
+/// One named list of options, owned. Mirrors [`AddonChoices`](crate::AddonChoices).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChoicesDecl {
+    /// Stable id within the addon.
+    pub id: String,
+    /// What the list is.
+    pub name: String,
+    /// Whether the values must be asked for rather than read from below.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub live: bool,
+    /// Every value, for a declared source. Empty when live.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub values: Vec<ChoiceDecl>,
+}
+
+/// One option, owned. Mirrors [`AddonChoice`](crate::AddonChoice).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChoiceDecl {
+    /// What gets stored.
+    pub value: String,
+    /// What the user reads.
+    pub label: String,
 }
 
 /// One signal, owned. Mirrors [`AddonSignal`](crate::AddonSignal).
@@ -516,7 +553,7 @@ mod tests {
     fn a_perform_looks_like_this_on_the_wire() {
         let json = serde_json::to_string(&Request::Perform {
             action: "play_pause".to_owned(),
-            params: BTreeMap::from([("app".to_owned(), "exe:spotify.exe".to_owned())]),
+            params: BTreeMap::from([("app".to_owned(), "exe:spotify.exe".into())]),
             value: None,
         })
         .expect("serialise");
@@ -600,6 +637,7 @@ mod tests {
             description: "For tests.".to_owned(),
             actions: vec![],
             device_actions: vec![],
+            choices: vec![],
             signals: vec![],
             settings: vec![],
             permissions: vec![],
