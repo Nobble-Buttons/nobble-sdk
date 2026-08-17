@@ -3,6 +3,9 @@
 Write an addon for [Nobble](https://github.com/Nobble-Buttons), a modular macro keyboard whose keys
 carry their own displays and change with the application you are using.
 
+**API documentation:** [nobble-buttons.github.io/nobble-sdk](https://nobble-buttons.github.io/nobble-sdk/)
+— rustdoc for all three crates, rebuilt from `main` on every push.
+
 Licensed under **Apache-2.0** — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 **Permissive on purpose.** The desktop client is source-available under noncommercial terms; this is

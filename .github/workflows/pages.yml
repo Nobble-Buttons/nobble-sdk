@@ -1,0 +1,113 @@
+# The published API documentation: rustdoc for the SDK and the two addons,
+# built from source on every push to main and served from GitHub Pages.
+#
+# **Deployed by pushing a branch, not through `actions/deploy-pages`.** That is
+# a deliberate choice and the reason this workflow is longer than the
+# alternative. A branch deployment is configured in the repository settings as
+# a branch and a folder that a person can see, point at and verify; the Actions
+# deployment path is a source that exists only as a side effect of a workflow
+# succeeding, and when it breaks there is nothing in the settings to look at.
+#
+# `gh-pages` is generated output. It is force-pushed as a single fresh commit
+# every run: nothing on it is authored, nothing on it is worth a history, and a
+# branch that accumulates regenerated HTML is paid for by every clone forever.
+# It can be deleted at any time and the next push to main rebuilds it.
+
+name: Docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  docs:
+    name: Build and publish rustdoc
+    # Windows rather than ubuntu, which is why this job is slower than the rest
+    # of CI. `media` and `volume` are a `#[cfg(windows)]` implementation over a
+    # `#[cfg(not(windows))]` stub; documented on Linux they would publish the
+    # stub as though it were the crate, which is a lie about the two crates
+    # people are pointed at as worked examples. The SDK itself is
+    # platform-independent and renders the same either way.
+    runs-on: windows-latest
+    permissions:
+      # The repository's default workflow token is read-only, and stays that
+      # way. This one job asks for the write it needs, so nothing else in CI
+      # gains the ability to push anything.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-docs-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-docs-
+            ${{ runner.os }}-cargo-
+
+      # `--no-deps` because documenting serde is docs.rs' job. `-D warnings`
+      # because a dead intra-doc link in a published API is a defect in the API
+      # and not a cosmetic one -- and because the crates already set
+      # `missing_docs = "warn"`, so this is the step where an undocumented
+      # public item stops being a warning nobody reads.
+      - name: Build the documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps
+
+      - name: Assemble the site
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # cargo writes no root index for a workspace of several crates, so
+          # without this the site root is a 404. Land on the SDK: it is what a
+          # reader came for, and rustdoc's own crate list carries them to the
+          # two addons from there.
+          cat > target/doc/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <title>Nobble addon SDK</title>
+          <meta http-equiv="refresh" content="0; url=nobble_addon_sdk/index.html">
+          <link rel="canonical" href="nobble_addon_sdk/index.html">
+          <p><a href="nobble_addon_sdk/index.html">Nobble addon SDK documentation</a></p>
+          HTML
+
+          # A branch deployment is run through Jekyll unless this file exists,
+          # and Jekyll drops every path beginning with an underscore -- which is
+          # a good deal of what rustdoc emits. The symptom is a site that loads
+          # with no styling and no search.
+          touch target/doc/.nojekyll
+
+          # cargo's build lock, which means nothing outside a target directory.
+          rm -f target/doc/.lock
+
+      - name: Publish to gh-pages
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd target/doc
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Documentation built from ${GITHUB_SHA}"
+          git push --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            gh-pages
