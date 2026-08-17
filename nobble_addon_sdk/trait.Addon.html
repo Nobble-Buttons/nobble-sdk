@@ -1,0 +1,149 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Something that can act on another application’s behalf."><title>Addon in nobble_addon_sdk - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="nobble_addon_sdk" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.1 (8bab26f4f 2026-07-14)" data-channel="1.97.1" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../static.files/storage-41dd4d93.js"></script><script defer src="sidebar-items.js"></script><script defer src="../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc trait"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Addon</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../nobble_addon_sdk/index.html">nobble_<wbr>addon_<wbr>sdk</a><span class="version">0.0.1</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Addon</a></h2><h3><a href="#required-methods">Required Methods</a></h3><ul class="block"><li><a href="#tymethod.actions" title="actions">actions</a></li><li><a href="#tymethod.availability" title="availability">availability</a></li><li><a href="#tymethod.description" title="description">description</a></li><li><a href="#tymethod.id" title="id">id</a></li><li><a href="#tymethod.name" title="name">name</a></li><li><a href="#tymethod.perform" title="perform">perform</a></li></ul><h3><a href="#provided-methods">Provided Methods</a></h3><ul class="block"><li><a href="#method.applies" title="applies">applies</a></li><li><a href="#method.choices" title="choices">choices</a></li><li><a href="#method.configure" title="configure">configure</a></li><li><a href="#method.device_actions" title="device_actions">device_actions</a></li><li><a href="#method.permissions" title="permissions">permissions</a></li><li><a href="#method.read_signals" title="read_signals">read_signals</a></li><li><a href="#method.settings" title="settings">settings</a></li><li><a href="#method.signals" title="signals">signals</a></li><li><a href="#method.status" title="status">status</a></li></ul><h3><a href="#implementors">Implementors</a></h3></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="index.html">In crate nobble_<wbr>addon_<wbr>sdk</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="index.html">nobble_addon_sdk</a></div><h1>Trait <span class="trait">Addon</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/nobble_addon_sdk/addon.rs.html#979-1157">Source</a> </span></div><pre class="rust item-decl"><code>pub trait Addon: <a class="trait" href="https://doc.rust-lang.org/1.97.1/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> {
+<details class="toggle type-contents-toggle"><summary class="hideme"><span>Show 15 methods</span></summary>    // Required methods
+    fn <a href="#tymethod.id" class="fn">id</a>(&amp;self) -&gt; &amp;'static <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.name" class="fn">name</a>(&amp;self) -&gt; &amp;'static <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.description" class="fn">description</a>(&amp;self) -&gt; &amp;'static <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.actions" class="fn">actions</a>(&amp;self) -&gt; &amp;'static [<a class="struct" href="struct.AddonAction.html" title="struct nobble_addon_sdk::AddonAction">AddonAction</a>];
+<span class="item-spacer"></span>    fn <a href="#tymethod.availability" class="fn">availability</a>(&amp;self) -&gt; <a class="enum" href="enum.Availability.html" title="enum nobble_addon_sdk::Availability">Availability</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.perform" class="fn">perform</a>(
+        &amp;mut self,
+        action: &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>,
+        invocation: &amp;<a class="struct" href="struct.Invocation.html" title="struct nobble_addon_sdk::Invocation">Invocation</a>&lt;'_&gt;,
+    ) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.97.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.unit.html">()</a>, <a class="enum" href="enum.AddonError.html" title="enum nobble_addon_sdk::AddonError">AddonError</a>&gt;;
+
+    // Provided methods
+    fn <a href="#method.device_actions" class="fn">device_actions</a>(&amp;self) -&gt; &amp;'static [<a class="struct" href="struct.DeviceAction.html" title="struct nobble_addon_sdk::DeviceAction">DeviceAction</a>] { ... }
+<span class="item-spacer"></span>    fn <a href="#method.applies" class="fn">applies</a>(&amp;self, _action: &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.bool.html">bool</a> { ... }
+<span class="item-spacer"></span>    fn <a href="#method.status" class="fn">status</a>(&amp;self) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.97.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="https://doc.rust-lang.org/1.97.1/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>&gt; { ... }
+<span class="item-spacer"></span>    fn <a href="#method.signals" class="fn">signals</a>(&amp;self) -&gt; &amp;'static [<a class="struct" href="struct.AddonSignal.html" title="struct nobble_addon_sdk::AddonSignal">AddonSignal</a>] { ... }
+<span class="item-spacer"></span>    fn <a href="#method.settings" class="fn">settings</a>(&amp;self) -&gt; &amp;'static [<a class="struct" href="struct.AddonSetting.html" title="struct nobble_addon_sdk::AddonSetting">AddonSetting</a>] { ... }
+<span class="item-spacer"></span>    fn <a href="#method.choices" class="fn">choices</a>(&amp;self) -&gt; &amp;'static [<a class="struct" href="struct.AddonChoices.html" title="struct nobble_addon_sdk::AddonChoices">AddonChoices</a>] { ... }
+<span class="item-spacer"></span>    fn <a href="#method.permissions" class="fn">permissions</a>(&amp;self) -&gt; &amp;'static [<a class="enum" href="enum.Permission.html" title="enum nobble_addon_sdk::Permission">Permission</a>] { ... }
+<span class="item-spacer"></span>    fn <a href="#method.configure" class="fn">configure</a>(
+        &amp;mut self,
+        _values: &amp;<a class="struct" href="https://doc.rust-lang.org/1.97.1/alloc/collections/btree/map/struct.BTreeMap.html" title="struct alloc::collections::btree::map::BTreeMap">BTreeMap</a>&lt;<a class="struct" href="https://doc.rust-lang.org/1.97.1/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>, <a class="struct" href="https://doc.rust-lang.org/1.97.1/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>&gt;,
+        _credentials: <a class="type" href="type.CredentialHandle.html" title="type nobble_addon_sdk::CredentialHandle">CredentialHandle</a>,
+    ) { ... }
+<span class="item-spacer"></span>    fn <a href="#method.read_signals" class="fn">read_signals</a>(&amp;mut self) -&gt; <a class="enum" href="enum.Reading.html" title="enum nobble_addon_sdk::Reading">Reading</a> { ... }
+</details>}</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Something that can act on another application’s behalf.</p>
+<p>Implementations are expected to be cheap to construct and to discover their
+target lazily: the daemon builds every addon at startup whether or not the
+application it integrates is installed, and a constructor that blocked on a
+network call would delay login for all of them.</p>
+</div></details><h2 id="required-methods" class="section-header">Required Methods<a href="#required-methods" class="anchor">§</a></h2><div class="methods"><details class="toggle method-toggle" open><summary><section id="tymethod.id" class="method"><a class="src rightside" href="../src/nobble_addon_sdk/addon.rs.html#981">Source</a><h4 class="code-header">fn <a href="#tymethod.id" class="fn">id</a>(&amp;self) -&gt; &amp;'static <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Stable identifier, stored in bindings. Never rename one.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.name" class="method"><a class="src rightside" href="../src/nobble_addon_sdk/addon.rs.html#984">Source</a><h4 class="code-header">fn <a href="#tymethod.name" class="fn">name</a>(&amp;self) -&gt; &amp;'static <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>What to call it.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.description" class="method"><a class="src rightside" href="../src/nobble_addon_sdk/addon.rs.html#987">Source</a><h4 class="code-header">fn <a href="#tymethod.description" class="fn">description</a>(&amp;self) -&gt; &amp;'static <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>What it integrates, in a sentence.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.actions" class="method"><a class="src rightside" href="../src/nobble_addon_sdk/addon.rs.html#990">Source</a><h4 class="code-header">fn <a href="#tymethod.actions" class="fn">actions</a>(&amp;self) -&gt; &amp;'static [<a class="struct" href="struct.AddonAction.html" title="struct nobble_addon_sdk::AddonAction">AddonAction</a>]</h4></section></summary><div class="docblock"><p>Everything it can be asked to do.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.availability" class="method"><a class="src rightside" href="../src/nobble_addon_sdk/addon.rs.html#1021">Source</a><h4 class="code-header">fn <a href="#tymethod.availability" class="fn">availability</a>(&amp;self) -&gt; <a class="enum" href="enum.Availability.html" title="enum nobble_addon_sdk::Availability">Availability</a></h4></section></summary><div class="docblock"><p>Whether it could act right now.</p>
+<p>Asked whenever the interface draws the addon, so it must be quick and
+must not block. It is allowed to be wrong a moment later — the target
+application can close between this answer and the next keypress, which
+is why <a href="trait.Addon.html#tymethod.perform" title="method nobble_addon_sdk::Addon::perform"><code>Self::perform</code></a> returns a result of its own rather than
+trusting this.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.perform" class="method"><a class="src rightside" href="../src/nobble_addon_sdk/addon.rs.html#1031">Source</a><h4 class="code-header">fn <a href="#tymethod.perform" class="fn">perform</a>(
+    &amp;mut self,
+    action: &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>,
+    invocation: &amp;<a class="struct" href="struct.Invocation.html" title="struct nobble_addon_sdk::Invocation">Invocation</a>&lt;'_&gt;,
+) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.97.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.unit.html">()</a>, <a class="enum" href="enum.AddonError.html" title="enum nobble_addon_sdk::AddonError">AddonError</a>&gt;</h4></section></summary><div class="docblock"><p>Do it.</p>
+<p><code>invocation</code> carries the binding’s parameters and, for a
+<a href="enum.Trigger.html#variant.Continuous" title="variant nobble_addon_sdk::Trigger::Continuous"><code>Trigger::Continuous</code></a> action, the position the input reported.</p>
+<h5 id="errors"><a class="doc-anchor" href="#errors">§</a>Errors</h5>
+<p>If the action is unknown, a required parameter is missing, the target is
+unavailable, or it failed.</p>
+</div></details></div><h2 id="provided-methods" class="section-header">Provided Methods<a href="#provided-methods" class="anchor">§</a></h2><div class="methods"><details class="toggle method-toggle" open><summary><section id="method.device_actions" class="method"><a class="src rightside" href="../src/nobble_addon_sdk/addon.rs.html#1010-1012">Source</a><h4 class="code-header">fn <a href="#method.device_actions" class="fn">device_actions</a>(&amp;self) -&gt; &amp;'static [<a class="struct" href="struct.DeviceAction.html" title="struct nobble_addon_sdk::DeviceAction">DeviceAction</a>]</h4></section></summary><div class="docblock"><p>Everything it <em>names</em> that the device does on its own (ADR-0021).</p>
+<p>Defaulted to nothing, like <a href="trait.Addon.html#method.signals" title="method nobble_addon_sdk::Addon::signals"><code>Self::signals</code></a> and <a href="trait.Addon.html#method.settings" title="method nobble_addon_sdk::Addon::settings"><code>Self::settings</code></a>, and
+for a stronger reason than either: almost every addon has none, and the
+whole point of the declaration is that it is exceptional. An addon
+listing one is saying <em>this is better as a keystroke than as a call to
+me, and here is what to call it</em>.</p>
+<p><strong><a href="trait.Addon.html#tymethod.perform" title="method nobble_addon_sdk::Addon::perform"><code>Self::perform</code></a> is never called for one of these</strong> by a daemon that
+understands the declaration — it resolved the action to a keystroke when
+the key was bound, and the press never reaches the host at all. An author
+implements nothing for them and must not try. A daemon built against an
+older SDK dropped this field on the way in and will call <code>perform</code>
+anyway; <a href="fn.run.html" title="fn nobble_addon_sdk::run"><code>run</code></a> answers that itself with a failure naming the
+cause, so an author still implements nothing.</p>
+<p>Ids share one namespace with <a href="trait.Addon.html#tymethod.actions" title="method nobble_addon_sdk::Addon::actions"><code>Self::actions</code></a>, because a binding stores
+one string and cannot say which list it came from.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.applies" class="method"><a class="src rightside" href="../src/nobble_addon_sdk/addon.rs.html#1056-1058">Source</a><h4 class="code-header">fn <a href="#method.applies" class="fn">applies</a>(&amp;self, _action: &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.bool.html">bool</a></h4></section></summary><div class="docblock"><p>Whether an action is worth offering at the moment.</p>
+<p>For the pair that undo each other — sign in and sign out — where
+offering both at once means one of them is always the wrong half of a
+question nobody asked.</p>
+<h5 id="this-is-relevance-not-permission"><a class="doc-anchor" href="#this-is-relevance-not-permission">§</a>This is relevance, not permission</h5>
+<p><a href="trait.Addon.html#tymethod.perform" title="method nobble_addon_sdk::Addon::perform"><code>Self::perform</code></a> deliberately does <strong>not</strong> consult it, and neither
+does <a href="trait.Addon.html#tymethod.actions" title="method nobble_addon_sdk::Addon::actions"><code>Self::actions</code></a>, which stays complete. Three consequences, all
+intended:</p>
+<ul>
+<li>A key bound to a hidden action still works. Bindings are authored
+once and pressed later, and a key that stopped existing because of
+something that happened after it was bound is the failure US9 calls
+out.</li>
+<li>The action can still be <em>bound</em>, because the editor is about what a
+key could ever do rather than what is useful this second.</li>
+<li>An addon must still handle being asked. Signing out twice succeeds;
+this only stops the interface suggesting it.</li>
+</ul>
+<p>Defaulted to <code>true</code>, which is the ordinary case: an action that is
+worth having is worth having now.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.status" class="method"><a class="src rightside" href="../src/nobble_addon_sdk/addon.rs.html#1086-1088">Source</a><h4 class="code-header">fn <a href="#method.status" class="fn">status</a>(&amp;self) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.97.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="https://doc.rust-lang.org/1.97.1/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>&gt;</h4></section></summary><div class="docblock"><p>One line about what it is currently connected to, when that is a
+question a user can have.</p>
+<p>Shown wherever the addon is drawn, next to its name.</p>
+<h5 id="why-this-is-not-part-of-availability"><a class="doc-anchor" href="#why-this-is-not-part-of-availability">§</a>Why this is not part of <a href="enum.Availability.html" title="enum nobble_addon_sdk::Availability"><code>Availability</code></a></h5>
+<p>They answer different questions, and only one of them has an answer
+when things are fine. <code>Availability</code> is <em>can it act</em>, and the useful
+case is the negative one — an addon that cannot act owes the user a
+reason. <code>Ready</code> carries no words because “it works” needs none.</p>
+<p>This is <em>what is it working as</em>, and it is only interesting when the
+answer is <strong>ready</strong>. “Signed in as Philipp” tells someone which of two
+Spotify accounts their Save key is filling up, which is invisible from
+anywhere else in the interface and is exactly the thing they need before
+pressing Sign out. Folding it into <code>Ready(String)</code> would have made every
+addon that has nothing to say construct an empty one.</p>
+<p>Defaulted to <code>None</code>, which is the ordinary case: an addon that talks to
+a local application is connected to the only thing it could be.</p>
+<p>Called whenever the interface draws the addon, so it must be quick and
+must not block — the same contract as <a href="trait.Addon.html#tymethod.availability" title="method nobble_addon_sdk::Addon::availability"><code>Self::availability</code></a>, and the
+same reason. Read it from what the addon already holds; do not go and
+ask the network.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.signals" class="method"><a class="src rightside" href="../src/nobble_addon_sdk/addon.rs.html#1095-1097">Source</a><h4 class="code-header">fn <a href="#method.signals" class="fn">signals</a>(&amp;self) -&gt; &amp;'static [<a class="struct" href="struct.AddonSignal.html" title="struct nobble_addon_sdk::AddonSignal">AddonSignal</a>]</h4></section></summary><div class="docblock"><p>Every signal it publishes. FR-062.</p>
+<p>Defaulted, because most addons only act. An addon that publishes none
+is not a lesser addon — it is the ordinary case, and the interface
+should not make it write an empty slice to say so.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.settings" class="method"><a class="src rightside" href="../src/nobble_addon_sdk/addon.rs.html#1103-1105">Source</a><h4 class="code-header">fn <a href="#method.settings" class="fn">settings</a>(&amp;self) -&gt; &amp;'static [<a class="struct" href="struct.AddonSetting.html" title="struct nobble_addon_sdk::AddonSetting">AddonSetting</a>]</h4></section></summary><div class="docblock"><p>Everything it needs configuring once (ADR-0013).</p>
+<p>Defaulted for the same reason as signals: most addons need nothing, and
+the ones that do are the exception.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.choices" class="method"><a class="src rightside" href="../src/nobble_addon_sdk/addon.rs.html#1116-1118">Source</a><h4 class="code-header">fn <a href="#method.choices" class="fn">choices</a>(&amp;self) -&gt; &amp;'static [<a class="struct" href="struct.AddonChoices.html" title="struct nobble_addon_sdk::AddonChoices">AddonChoices</a>]</h4></section></summary><div class="docblock"><p>Named lists its parameters can draw options from (ADR-0022).</p>
+<p>Defaulted to nothing, because most parameters are free text and always
+were. Declared here rather than on the parameter so that two parameters
+can share one list — a pin and a priority pointing at the same people
+must not be able to show two different rosters.</p>
+<p>A source marked <a href="struct.AddonChoices.html#structfield.live" title="field nobble_addon_sdk::AddonChoices::live"><code>AddonChoices::live</code></a> carries no values here; the
+daemon asks for them when somebody opens the picker.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.permissions" class="method"><a class="src rightside" href="../src/nobble_addon_sdk/addon.rs.html#1132-1134">Source</a><h4 class="code-header">fn <a href="#method.permissions" class="fn">permissions</a>(&amp;self) -&gt; &amp;'static [<a class="enum" href="enum.Permission.html" title="enum nobble_addon_sdk::Permission">Permission</a>]</h4></section></summary><div class="docblock"><p>Everything it needs to be <em>allowed</em> to do (FR-046).</p>
+<p>Defaulted to nothing, and that default is the honest one for more
+addons than it looks: an addon that drives a local API — the media
+session, the audio mixer — reaches no host, opens no file and keeps no
+account, so it has nothing to ask for and the user is never asked.</p>
+<p><strong>An addon declaring anything here does not run until the user grants
+it.</strong> So the list is what the addon needs, not what it might one day
+like: every entry is a question somebody has to answer before the addon
+works at all, and an addon that asks for more than it uses is training
+people to grant without reading.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.configure" class="method"><a class="src rightside" href="../src/nobble_addon_sdk/addon.rs.html#1143">Source</a><h4 class="code-header">fn <a href="#method.configure" class="fn">configure</a>(
+    &amp;mut self,
+    _values: &amp;<a class="struct" href="https://doc.rust-lang.org/1.97.1/alloc/collections/btree/map/struct.BTreeMap.html" title="struct alloc::collections::btree::map::BTreeMap">BTreeMap</a>&lt;<a class="struct" href="https://doc.rust-lang.org/1.97.1/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>, <a class="struct" href="https://doc.rust-lang.org/1.97.1/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>&gt;,
+    _credentials: <a class="type" href="type.CredentialHandle.html" title="type nobble_addon_sdk::CredentialHandle">CredentialHandle</a>,
+)</h4></section></summary><div class="docblock"><p>Take its settings, and a place to keep its own credentials.</p>
+<p>Called at startup and whenever the settings change, so an addon holds
+what it needs rather than asking. <a href="trait.Credentials.html" title="trait nobble_addon_sdk::Credentials"><code>Credentials</code></a> arrives as a handle
+rather than a value because an addon needs it <em>later</em> too — a refreshed
+token has to go back, and that happens mid-action rather than at
+configuration time.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.read_signals" class="method"><a class="src rightside" href="../src/nobble_addon_sdk/addon.rs.html#1154-1156">Source</a><h4 class="code-header">fn <a href="#method.read_signals" class="fn">read_signals</a>(&amp;mut self) -&gt; <a class="enum" href="enum.Reading.html" title="enum nobble_addon_sdk::Reading">Reading</a></h4></section></summary><div class="docblock"><p>Read every signal it publishes, now.</p>
+<p>Called on the signal poll, <strong>never on the input path</strong> — the same rule
+as <a href="trait.Addon.html#tymethod.perform" title="method nobble_addon_sdk::Addon::perform"><code>Self::perform</code></a>, and for a stronger reason: this runs on a timer,
+so an implementation that blocked for a second would do it forever
+rather than once per keypress.</p>
+<p>See <a href="enum.Reading.html" title="enum nobble_addon_sdk::Reading"><code>Reading</code></a> for why this is a question the daemon asks rather than
+something the addon announces.</p>
+</div></details></div><h2 id="implementors" class="section-header">Implementors<a href="#implementors" class="anchor">§</a></h2><div id="implementors-list"></div><script src="../trait.impl/nobble_addon_sdk/addon/trait.Addon.js" async></script></section></div></main></body></html>

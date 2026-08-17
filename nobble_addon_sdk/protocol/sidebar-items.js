@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["PROTOCOL"],"enum":["Answer","Ask","AvailabilityDecl","FailureKind","KeystrokeDecl","PermissionDecl","ReadingDecl","Reply","Request"],"struct":["ActionDecl","ChoiceDecl","ChoicesDecl","Description","DeviceActionDecl","ParamDecl","SettingDecl","SignalDecl","Version"]};

@@ -1,0 +1,32 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="The protocol version this SDK speaks."><title>PROTOCOL in nobble_addon_sdk::protocol - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="nobble_addon_sdk" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.1 (8bab26f4f 2026-07-14)" data-channel="1.97.1" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="sidebar-items.js"></script><script defer src="../../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc constant"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">PROTOCOL</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../nobble_addon_sdk/index.html">nobble_<wbr>addon_<wbr>sdk</a><span class="version">0.0.1</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">PROTOCOL</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#11--device-resolved-actions" title="1.1 — device-resolved actions">1.1 — device-resolved actions</a></li></ul></section><div id="rustdoc-modnav"><h2><a href="index.html">In nobble_<wbr>addon_<wbr>sdk::<wbr>protocol</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">nobble_addon_sdk</a>::<wbr><a href="index.html">protocol</a></div><h1>Constant <span class="constant">PROTOCOL</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/nobble_addon_sdk/protocol.rs.html#70">Source</a> </span></div><pre class="rust item-decl"><code>pub const PROTOCOL: <a class="struct" href="struct.Version.html" title="struct nobble_addon_sdk::protocol::Version">Version</a>;</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>The protocol version this SDK speaks.</p>
+<p>Independent of the daemon’s version, which is the whole point of FR-049: an
+addon is built against an SDK, not against a daemon, and the two ship
+separately. <code>major</code> differing means incompatible, and the daemon refuses
+rather than loading — FR-049 again, with a message naming the fix, the same
+rule the UI–daemon handshake already follows.</p>
+<h2 id="11--device-resolved-actions"><a class="doc-anchor" href="#11--device-resolved-actions">§</a>1.1 — device-resolved actions</h2>
+<p><a href="struct.Description.html#structfield.device_actions" title="field nobble_addon_sdk::protocol::Description::device_actions"><code>Description::device_actions</code></a> was added (<a href="../../../docs/decisions/0021-addon-device-resolved-actions.md">ADR-0021</a>). Minor, because
+<a href="struct.Version.html#method.compatible_with" title="method nobble_addon_sdk::protocol::Version::compatible_with"><code>Version::compatible_with</code></a> compares majors, the field is omitted when
+empty, and an addon that declares none puts <strong>not one new byte</strong> on the wire.
+A major bump would refuse every 1.1 addon on a 1.0 daemon — the shipped ones,
+and every third-party addon that declares nothing of the kind — to defend
+against one field.</p>
+<p><strong>Additive on the wire is not additive in meaning</strong>, and the version number
+cannot carry the difference. Two things carry it instead, and neither is
+optional:</p>
+<ul>
+<li>A daemon that reads this field must <strong>refuse an action it cannot
+represent, naming it</strong>, rather than reading it as something else. The
+refusal is per <em>action</em>: the addon stays in the registry with that one row
+reported unusable. Failing the handshake instead would leave the addon
+nowhere but a log line, which is a Principle IV collapse — and it is why
+<a href="enum.KeystrokeDecl.html" title="enum nobble_addon_sdk::protocol::KeystrokeDecl"><code>KeystrokeDecl</code></a> carries <a href="enum.KeystrokeDecl.html#variant.Unknown" title="variant nobble_addon_sdk::protocol::KeystrokeDecl::Unknown"><code>KeystrokeDecl::Unknown</code></a> rather than failing
+the parse of the whole <a href="struct.Description.html" title="struct nobble_addon_sdk::protocol::Description"><code>Description</code></a>.</li>
+<li>A daemon built against 1.0 does not know the field exists. Serde drops what
+it does not recognise, so it will send <a href="enum.Request.html#variant.Perform" title="variant nobble_addon_sdk::protocol::Request::Perform"><code>Request::Perform</code></a> for an action
+whose author never wrote a <code>perform</code> arm. <a href="../fn.run.html" title="fn nobble_addon_sdk::run"><code>run</code></a> answers that
+itself with a failure naming the cause, rather than letting it fall through
+to <code>NoSuchAction</code>, which would send the user looking for a missing action
+that is right there in the list.</li>
+</ul>
+</div></details></section></div></main></body></html>
