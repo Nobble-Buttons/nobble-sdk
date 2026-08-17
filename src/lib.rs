@@ -53,6 +53,7 @@ const TARGET: &[AddonParam] = &[AddonParam {
     description: "Whose volume to change. Leave empty for the system volume.",
     kind: ParamKind::App,
     required: false,
+    ..AddonParam::BASE
 }];
 
 const ACTIONS: &[AddonAction] = &[
