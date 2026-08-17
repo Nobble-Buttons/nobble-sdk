@@ -46,6 +46,7 @@ const TARGET: &[AddonParam] = &[AddonParam {
     description: "Which application to control. Leave empty for whatever is playing.",
     kind: ParamKind::App,
     required: false,
+    ..AddonParam::BASE
 }];
 
 const ACTIONS: &[AddonAction] = &[
