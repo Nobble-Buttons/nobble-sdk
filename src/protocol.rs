@@ -38,7 +38,36 @@ use serde::{Deserialize, Serialize};
 /// separately. `major` differing means incompatible, and the daemon refuses
 /// rather than loading — FR-049 again, with a message naming the fix, the same
 /// rule the UI–daemon handshake already follows.
-pub const PROTOCOL: Version = Version { major: 1, minor: 0 };
+///
+/// # 1.1 — device-resolved actions
+///
+/// [`Description::device_actions`] was added ([ADR-0021]). Minor, because
+/// [`Version::compatible_with`] compares majors, the field is omitted when
+/// empty, and an addon that declares none puts **not one new byte** on the wire.
+/// A major bump would refuse every 1.1 addon on a 1.0 daemon — the shipped ones,
+/// and every third-party addon that declares nothing of the kind — to defend
+/// against one field.
+///
+/// **Additive on the wire is not additive in meaning**, and the version number
+/// cannot carry the difference. Two things carry it instead, and neither is
+/// optional:
+///
+/// - A daemon that reads this field must **refuse an action it cannot
+///   represent, naming it**, rather than reading it as something else. The
+///   refusal is per *action*: the addon stays in the registry with that one row
+///   reported unusable. Failing the handshake instead would leave the addon
+///   nowhere but a log line, which is a Principle IV collapse — and it is why
+///   [`KeystrokeDecl`] carries [`KeystrokeDecl::Unknown`] rather than failing
+///   the parse of the whole [`Description`].
+/// - A daemon built against 1.0 does not know the field exists. Serde drops what
+///   it does not recognise, so it will send [`Request::Perform`] for an action
+///   whose author never wrote a `perform` arm. [`run`](crate::run) answers that
+///   itself with a failure naming the cause, rather than letting it fall through
+///   to `NoSuchAction`, which would send the user looking for a missing action
+///   that is right there in the list.
+///
+/// [ADR-0021]: ../../../docs/decisions/0021-addon-device-resolved-actions.md
+pub const PROTOCOL: Version = Version { major: 1, minor: 1 };
 
 /// A protocol version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -235,6 +264,16 @@ pub struct Description {
     pub description: String,
     /// Everything it can be asked to do.
     pub actions: Vec<ActionDecl>,
+    /// Everything it *names* that the device does on its own (ADR-0021).
+    ///
+    /// Omitted when empty, which is almost always, and the omission is
+    /// load-bearing in the same way `permissions`' is: an addon built against
+    /// SDK 1.0 sends no field, and *declares none* is exactly the right reading
+    /// of that. The reverse — a 1.1 addon talking to a 1.0 daemon — is the case
+    /// the version number cannot express, and is answered in
+    /// [`run`](crate::run) rather than here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub device_actions: Vec<DeviceActionDecl>,
     /// Everything it publishes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub signals: Vec<SignalDecl>,
@@ -304,6 +343,100 @@ pub struct ActionDecl {
     /// What it can be configured with.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub params: Vec<ParamDecl>,
+}
+
+/// One device-resolved action, owned. Mirrors
+/// [`DeviceAction`](crate::DeviceAction).
+///
+/// Deliberately **not** an [`ActionDecl`] with extra fields. It carries no
+/// `trigger`, because a keystroke has no position to send, and no `params`,
+/// because a resolved binding stores none — so the two combinations ADR-0021
+/// calls impossible have nowhere to live rather than being checked for. A reader
+/// of a log can also tell which kind they are looking at without checking a flag.
+///
+/// Serde ignores fields it was not asked about, so a hand-written JSON addon can
+/// still *write* `"trigger"` beside one of these. What it cannot do is make it
+/// mean anything, because nothing reads it. That is the accurate claim;
+/// "unrepresentable" would be too strong.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceActionDecl {
+    /// Stable identifier, stored as the binding's provenance. Shares one
+    /// namespace with [`ActionDecl::id`]; the daemon refuses a collision by name
+    /// rather than resolving it to whichever list it looked in first.
+    pub id: String,
+    /// What to call it.
+    pub name: String,
+    /// What it does, in a sentence.
+    pub description: String,
+    /// The default the binding editor starts from, which the user may change.
+    pub keystroke: KeystrokeDecl,
+    /// The step outside Nobble the user must also take (FR-024), if any. Free
+    /// text, shown at the moment of binding, and never parsed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prerequisite: Option<String>,
+}
+
+/// One keystroke, owned. Mirrors [`DeviceKeystroke`](crate::DeviceKeystroke).
+///
+/// # The tags are `nobble_rpc::ActionDto`'s tags, and that is the point
+///
+/// `hid_tap` and `hid_consumer`, with the same field names and the same
+/// omit-when-false on the modifiers, so this object and the one a binding is
+/// saved as are the **same JSON text**. The SDK cannot depend on `nobble-rpc`
+/// (FR-044) and generated bindings do not cross that boundary, so identical
+/// spelling plus a test pinning it is what stands in for Constitution VI's
+/// single definition. If the two ever drift, that test is what says so — nothing
+/// else will, because Cargo cannot see across the boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum KeystrokeDecl {
+    /// A keystroke.
+    HidTap {
+        /// HID usage code, not a character.
+        key: u8,
+        /// Held with it.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        ctrl: bool,
+        /// Held with it.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        shift: bool,
+        /// Held with it.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        alt: bool,
+        /// Held with it.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        gui: bool,
+    },
+    /// A Consumer Control usage — media keys.
+    HidConsumer {
+        /// The usage.
+        usage: u16,
+    },
+    /// A kind this build has no name for.
+    ///
+    /// **Not a fallback, and never sent by this SDK** — a refusal cut down to
+    /// the size ADR-0021 requires. Without it, an addon built against a later
+    /// SDK fails to deserialise its whole [`Description`], the handshake fails,
+    /// and the addon appears nowhere but a log line. With it, the cost is one
+    /// action the daemon reports as declared-but-unusable. The daemon must never
+    /// treat this as a keystroke; there is nothing here to send.
+    ///
+    /// **It covers an unrecognised *tag*, and only that.** A malformed payload —
+    /// `{"type":"hid_tap","key":999}`, a missing `key`, a `keystroke` that is a
+    /// string — still fails the parse of the whole [`Description`], because
+    /// serde has no way to localise the error to one element. That is left as it
+    /// is rather than papered over: this SDK cannot emit one, so producing one
+    /// means an addon written in something else is wrong about the format, and a
+    /// loud refusal is the right answer to that. The guarantee is about *future
+    /// versions*, which is what ADR-0021 asked for; it is not a general
+    /// tolerance of bad input, and claiming otherwise would be the kind of
+    /// promise somebody later relies on.
+    ///
+    /// The opposite decision from [`DeviceKeystroke`](crate::DeviceKeystroke),
+    /// which has no such variant on purpose: a *declaration* should fail to
+    /// compile when the vocabulary grows, and a *decode* should not fail at all.
+    #[serde(other)]
+    Unknown,
 }
 
 /// One parameter, owned. Mirrors [`AddonParam`](crate::AddonParam).
@@ -425,6 +558,113 @@ mod tests {
             let text = serde_json::to_string(&r).expect("serialise");
             let back: Request = serde_json::from_str(&text).expect("parse");
             assert_eq!(back, r, "{text}");
+        }
+    }
+
+    /// The keystroke object has to be byte-identical to what
+    /// `nobble_rpc::ActionDto::HidTap` writes into the configuration file. This
+    /// pins one half; `nobble-service`, the only crate that can see both, pins
+    /// the equality. Two crates forbidden to see each other agree here or
+    /// nowhere.
+    #[test]
+    fn a_device_action_looks_like_this_on_the_wire() {
+        let json = serde_json::to_string(&DeviceActionDecl {
+            id: "discord_mute".to_owned(),
+            name: "Toggle mute in Discord".to_owned(),
+            description: "Mutes and unmutes your microphone in Discord.".to_owned(),
+            keystroke: KeystrokeDecl::HidTap {
+                key: 0x10,
+                ctrl: true,
+                shift: true,
+                alt: false,
+                gui: false,
+            },
+            prerequisite: Some("Set this keybind in Discord: User Settings > Keybinds.".to_owned()),
+        })
+        .expect("serialise");
+        assert_eq!(
+            json,
+            r#"{"id":"discord_mute","name":"Toggle mute in Discord","description":"Mutes and unmutes your microphone in Discord.","keystroke":{"type":"hid_tap","key":16,"ctrl":true,"shift":true},"prerequisite":"Set this keybind in Discord: User Settings > Keybinds."}"#
+        );
+    }
+
+    /// The claim that makes 1.1 a minor bump rather than a promise. An addon
+    /// that declares nothing new must put nothing new on the wire, or every
+    /// existing addon becomes a new conversation with a daemon that has not
+    /// changed.
+    #[test]
+    fn an_addon_declaring_none_puts_not_one_new_byte_on_the_wire() {
+        let json = serde_json::to_string(&Description {
+            id: "probe".to_owned(),
+            name: "Probe".to_owned(),
+            description: "For tests.".to_owned(),
+            actions: vec![],
+            device_actions: vec![],
+            signals: vec![],
+            settings: vec![],
+            permissions: vec![],
+        })
+        .expect("serialise");
+        assert_eq!(
+            json,
+            r#"{"id":"probe","name":"Probe","description":"For tests.","actions":[]}"#
+        );
+    }
+
+    /// ADR-0021's refusal, sized. An addon built against a later SDK costs the
+    /// daemon one unusable action, never the parse of the whole description —
+    /// which would fail the handshake and leave the addon nowhere but a log
+    /// line.
+    ///
+    /// Read inside a `Reply`, which is how it actually arrives: `Reply` is
+    /// internally tagged, and an internally tagged outer enum buffers its
+    /// content, which is exactly the situation where a `#[serde(other)]` inside
+    /// might have behaved differently from the bare struct. It does not.
+    #[test]
+    fn a_keystroke_kind_from_the_future_costs_one_action_not_the_description() {
+        let wire = r#"{"say":"description","id":"a","name":"A","description":"d","actions":[],"device_actions":[{"id":"x","name":"X","description":"d","keystroke":{"type":"hid_sequence","keys":[4,5]}}]}"#;
+        let Reply::Description(d) = serde_json::from_str(wire).expect("parse") else {
+            panic!("expected a description");
+        };
+        assert_eq!(d.device_actions.len(), 1);
+        assert_eq!(d.device_actions[0].keystroke, KeystrokeDecl::Unknown);
+        assert_eq!(d.device_actions[0].prerequisite, None);
+    }
+
+    /// The other half of the same guarantee, and the reason it is written down:
+    /// [`KeystrokeDecl::Unknown`] catches an unrecognised **tag** and nothing
+    /// else. A malformed payload fails the whole description, because serde
+    /// cannot localise the error to one element.
+    ///
+    /// Asserted rather than left as a surprise. This SDK cannot emit any of
+    /// these, so producing one means an addon written in something else is wrong
+    /// about the format, and a loud refusal is the right answer — but somebody
+    /// reading `Unknown`'s existence could reasonably assume more tolerance than
+    /// there is, and act on it.
+    #[test]
+    fn a_malformed_keystroke_still_fails_the_whole_description() {
+        for (case, wire) in [
+            (
+                "no keystroke at all",
+                r#"{"id":"a","name":"A","description":"d","actions":[],"device_actions":[{"id":"x","name":"X","description":"d"}]}"#,
+            ),
+            (
+                "a string where the object goes",
+                r#"{"id":"a","name":"A","description":"d","actions":[],"device_actions":[{"id":"x","name":"X","description":"d","keystroke":"ctrl+shift+m"}]}"#,
+            ),
+            (
+                "a tag with no usage",
+                r#"{"id":"a","name":"A","description":"d","actions":[],"device_actions":[{"id":"x","name":"X","description":"d","keystroke":{"type":"hid_tap"}}]}"#,
+            ),
+            (
+                "a usage that is not a byte",
+                r#"{"id":"a","name":"A","description":"d","actions":[],"device_actions":[{"id":"x","name":"X","description":"d","keystroke":{"type":"hid_tap","key":999}}]}"#,
+            ),
+        ] {
+            assert!(
+                serde_json::from_str::<Description>(wire).is_err(),
+                "{case} parsed, and it must not"
+            );
         }
     }
 

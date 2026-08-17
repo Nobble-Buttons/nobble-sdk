@@ -188,6 +188,211 @@ impl AddonAction {
     }
 }
 
+/// One keystroke, exactly as the device will send it.
+///
+/// # Why this crate spells the HID vocabulary again
+///
+/// It has no choice. Nothing here may depend on another Nobble crate — the rule
+/// at the top of this module, and FR-044 behind it — so `nobble_core::HidAction`
+/// is unreachable from an addon author's build, and Constitution VI's preferred
+/// answer, generated bindings, does not cross a repository boundary that exists
+/// on purpose (FR-043, FR-049). The alternative to restating the shape is not
+/// restating it somewhere better; it is being unable to declare a keystroke at
+/// all, and then FR-024 has no answer.
+///
+/// What *is* a choice is how much gets restated and how the copy is held in
+/// step. These variants, their field names and their serde spelling in
+/// [`KeystrokeDecl`](crate::protocol::KeystrokeDecl) match
+/// `nobble_rpc::ActionDto::HidTap` and `HidConsumer` one for one, so the object
+/// crossing this pipe is the same JSON text a binding is saved as, and the
+/// daemon's conversion is a rename-free `match` a reader can check by eye. A
+/// test in `nobble-service` — the only crate that can see both — pins that, and
+/// stands in for the generated binding.
+///
+/// **That is weaker than one definition and is recorded as such rather than
+/// argued away.** Nothing makes a new `HidAction` variant a compile error here,
+/// because Cargo cannot see across the boundary. Two things bound the damage:
+/// the drift is asymmetric — a variant added there narrows what this can say, a
+/// variant added here breaks the daemon's exhaustive bridge — and what is copied
+/// is USB HID's vocabulary rather than Nobble's, so it is not a format anyone
+/// here is free to change.
+///
+/// # Why exactly these two, and why not MIDI
+///
+/// The cut is made by an existing function rather than by judgement.
+/// `ActionDto::from_binding` has arms for `HidTap` and `HidConsumer`, and its
+/// `_ => return None` covers key sequences and mouse movement, which have no
+/// on-disk form — so an addon declaring one would declare a binding
+/// `check_supported` refuses to save, and it fails the **whole file** rather
+/// than the one key.
+///
+/// The narrower reading matters as much. One chord cannot type a string, and a
+/// sequence is precisely the mechanism the contract rules out when it says an
+/// addon able to ask the device to send anything at any time *"would be a
+/// keylogger with extra steps"*. Excluding it in the type leaves no check for
+/// anyone to forget.
+///
+/// MIDI is left out on different grounds, and the omission is **not** a claim
+/// that device-resolved means keyboard. `Binding::Midi` is device-resolved too
+/// and a control change is inherently continuous, so resolution and trigger are
+/// genuinely independent axes. But `midi_note` and `midi_cc` are already
+/// first-class binding kinds with their own editors, so there is no
+/// discoverability gap for an addon to close. Adding a variant later is
+/// additive; adding one now is speculative.
+///
+/// Deliberately **not** `#[non_exhaustive]` — the opposite choice from
+/// [`ParamKind`], for the reason that separates them: an unfamiliar parameter
+/// kind has a useful fallback, a text box, and an unfamiliar keystroke has none.
+/// A wildcard arm here is how a device silently sends nothing. Adding a variant
+/// *should* fail to compile in the daemon that has to translate it, which is
+/// what [`Request`](crate::protocol::Request) says for itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceKeystroke {
+    /// Press and release one key, with modifiers held.
+    ///
+    /// **What is declared here is a suggestion the user is expected to change**,
+    /// and an addon that treats it as a contract has misunderstood the field.
+    /// Discord ships no keybind for Toggle Mute — the user invents one — so
+    /// whatever is declared has to be transcribed into Discord by hand anyway.
+    /// [`Self::Consumer`] is the opposite case: there the addon knows the answer.
+    Tap {
+        /// A HID usage code, **not** a character — the same distinction
+        /// `HidKey` makes on the daemon side, for the same reason: a keystroke
+        /// authored on a QWERTZ layout and pressed on a QWERTY host produces a
+        /// different character, and hiding that makes it invisible until
+        /// somebody complains. Usage `0x10` is the key labelled **M** on ANSI
+        /// and the key labelled **,** on AZERTY, so an addon's choice of chord
+        /// can collide with something on a layout its author never saw. That is
+        /// what the editor is for.
+        key: u8,
+        /// Held with it.
+        ctrl: bool,
+        /// Held with it.
+        shift: bool,
+        /// Held with it.
+        alt: bool,
+        /// Held with it — Windows, Command, Super.
+        gui: bool,
+    },
+    /// A Consumer Control usage — the media keys.
+    ///
+    /// Here because [ADR-0021] intends `media` to gain a device-resolved
+    /// play/pause as a *new* action, and calls its case stronger than Discord's:
+    /// a consumer usage is layout-free and needs nothing arranged elsewhere, so
+    /// the addon genuinely knows the number and the declaration is a fact rather
+    /// than a suggestion. A type that could not say so would have made the
+    /// adoption impossible.
+    ///
+    /// [ADR-0021]: ../../../docs/decisions/0021-addon-device-resolved-actions.md
+    Consumer {
+        /// The usage.
+        usage: u16,
+    },
+}
+
+/// One thing an addon *names* and the **device** does, with no addon running.
+///
+/// [ADR-0021]. Discord's Toggle Mute is the case this exists for: it is a
+/// *global* keybind, so a device that sends it controls Discord from the
+/// background — at the login screen, inside a full-screen game, and with Nobble
+/// closed. That is Principle V and [ADR-0007], and a stronger promise than any
+/// addon can otherwise make.
+///
+/// Binding one writes a HID binding. [`Addon::perform`] is never called, the
+/// addon need not be running, and it need not ever have been *allowed* to run —
+/// ADR-0021 exempts these from the permission grant, because the grant's only
+/// lever is *do not start the process* and a keystroke in flash starts none.
+/// That is defensible only because what the device will send is disclosed when
+/// the key is bound and frozen there.
+///
+/// # Why this is not [`AddonAction`] with more fields
+///
+/// Because the two are not the same shape, and one struct would carry fields
+/// that are load-bearing in one regime and meaningless in the other, with
+/// nothing but a doc comment saying which.
+///
+/// A device-resolved action has no [`Trigger`]: a keystroke has no position to
+/// send, so continuous is incoherent *by construction* rather than merely
+/// disallowed. It has no [`AddonParam`]s: a resolved binding carries no
+/// parameters at all, so a runtime-varying one is impossible here rather than
+/// late. ADR-0021 calls both impossible, and this is the shape in which they
+/// cannot be *written down* — which is the discipline `Binding` already states
+/// for itself, that the kind and the payload cannot be constructed disagreeing.
+///
+/// The honest limit of that: an addon written in something other than Rust can
+/// still put `"trigger"` and `"params"` in the JSON, because serde ignores
+/// fields it was not asked about. What it cannot do is make them *mean*
+/// anything — there is nowhere for the daemon to read them from, so there is no
+/// check to forget. That is a weaker claim than "unrepresentable" and it is the
+/// true one.
+///
+/// The cost of a second list is real and is paid in one place: **ids share one
+/// namespace with [`Addon::actions`]**, because a binding stores one string and
+/// cannot say which list it came from. A collision has no type to prevent it,
+/// and the daemon must refuse it by name rather than guess — otherwise binding
+/// the device-resolved twin resolves to the host-resolved one, which is the
+/// *"silently fall back to a host-resolved call when the daemon happens to be
+/// running"* the contract forbids outright. Worth knowing that ids within
+/// [`Addon::actions`] are not checked for uniqueness today either, and
+/// `Registry::perform` takes the first match; this makes an existing unenforced
+/// invariant load-bearing rather than inventing a new hazard.
+///
+/// # A separate list here is not a separate group in the interface
+///
+/// ADR-0021 requires these to appear in the addon's action list *alongside* the
+/// host-resolved ones, reported per row rather than segregated, because grouping
+/// by mechanism is what FR-024b forbids in the very addon that will hold both
+/// families. Nothing here decides that: the daemon assembles one list for the
+/// interface out of both, the way it already computes `applies` per row rather
+/// than reading it from a declaration. What an author writes and what a user
+/// reads have never been the same shape.
+///
+/// [ADR-0021]: ../../../docs/decisions/0021-addon-device-resolved-actions.md
+/// [ADR-0007]: ../../../docs/decisions/0007-input-delivery.md
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeviceAction {
+    /// Stable identifier, and what the binding records as provenance so that
+    /// removing the addon reports the binding broken rather than leaving a bare
+    /// keystroke nobody can explain (`003-FR-066` with `003-FR-047`). It must
+    /// not change once anyone could have bound it, and it must not collide with
+    /// an [`AddonAction::id`] on the same addon.
+    pub id: &'static str,
+    /// What to call it in a menu. The whole reason not to leave this as a
+    /// hand-configured HID binding: the daemon's own summary of a raw tap is
+    /// `Ctrl+Shift+usage 0x10`, which is accurate and unexplainable.
+    pub name: &'static str,
+    /// What it does, in a sentence.
+    pub description: &'static str,
+    /// What the device sends **by default**. The user can change it, and must be
+    /// able to, because it has to match whatever they set in the other
+    /// application and only they know what that is.
+    ///
+    /// Read once, when the key is bound, and never re-resolved on load
+    /// (ADR-0021). So a later version of the addon cannot change what an
+    /// already-bound key types — and a wrong default is wrong for everyone who
+    /// already bound it, with no upgrade path short of rebinding. That is the
+    /// right way round: the alternative is an addon update silently altering a
+    /// key the user authored.
+    pub keystroke: DeviceKeystroke,
+    /// The step outside Nobble that has to happen for this to work, if there is
+    /// one: *"Set this keybind in Discord: User Settings > Keybinds."*
+    ///
+    /// Free text, shown at the moment of binding, and **never parsed** — which
+    /// is what lets it also carry a suggested chord in prose without that
+    /// suggestion becoming a grammar with a compatibility surface of its own.
+    /// The day something reads a keystroke out of this string, this field has
+    /// quietly become the interface [`DeviceKeystroke`] exists to be instead.
+    ///
+    /// `None` where there is nothing to arrange elsewhere, which is the case a
+    /// future device-resolved play/pause is in. An [`Option`] rather than an
+    /// empty string, because the two states oblige the interface differently:
+    /// `Some` means it must not claim the key works until the user confirms the
+    /// step (FR-024), since Nobble cannot read another application's settings
+    /// and must say so rather than pretend. A sentinel would make *the author
+    /// left it blank* and *there is nothing to do* the same value.
+    pub prerequisite: Option<&'static str>,
+}
+
 /// What an action was given when it ran.
 ///
 /// Two sources, and keeping them apart is the whole design. **Parameters** were
@@ -510,6 +715,28 @@ pub trait Addon: Send {
 
     /// Everything it can be asked to do.
     fn actions(&self) -> &'static [AddonAction];
+
+    /// Everything it *names* that the device does on its own (ADR-0021).
+    ///
+    /// Defaulted to nothing, like [`Self::signals`] and [`Self::settings`], and
+    /// for a stronger reason than either: almost every addon has none, and the
+    /// whole point of the declaration is that it is exceptional. An addon
+    /// listing one is saying *this is better as a keystroke than as a call to
+    /// me, and here is what to call it*.
+    ///
+    /// **[`Self::perform`] is never called for one of these** by a daemon that
+    /// understands the declaration — it resolved the action to a keystroke when
+    /// the key was bound, and the press never reaches the host at all. An author
+    /// implements nothing for them and must not try. A daemon built against an
+    /// older SDK dropped this field on the way in and will call `perform`
+    /// anyway; [`run`](crate::run) answers that itself with a failure naming the
+    /// cause, so an author still implements nothing.
+    ///
+    /// Ids share one namespace with [`Self::actions`], because a binding stores
+    /// one string and cannot say which list it came from.
+    fn device_actions(&self) -> &'static [DeviceAction] {
+        &[]
+    }
 
     /// Whether it could act right now.
     ///

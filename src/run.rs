@@ -9,11 +9,13 @@ use std::sync::{Arc, Mutex};
 
 use crate::addon::{
     Addon, AddonAction, AddonError, AddonParam, AddonSetting, AddonSignal, Availability,
-    CredentialHandle, Credentials, Invocation, ParamKind, Permission, Reading, Trigger,
+    CredentialHandle, Credentials, DeviceAction, DeviceKeystroke, Invocation, ParamKind, Permission,
+    Reading, Trigger,
 };
 use crate::protocol::{
-    ActionDecl, Answer, Ask, AvailabilityDecl, Description, FailureKind, PROTOCOL, ParamDecl,
-    PermissionDecl, ReadingDecl, Reply, Request, SettingDecl, SignalDecl,
+    ActionDecl, Answer, Ask, AvailabilityDecl, Description, DeviceActionDecl, FailureKind,
+    KeystrokeDecl, PROTOCOL, ParamDecl, PermissionDecl, ReadingDecl, Reply, Request, SettingDecl,
+    SignalDecl,
 };
 
 /// Serve an addon on stdin and stdout, until told to stop.
@@ -118,6 +120,30 @@ fn perform<A: Addon>(
     params: &BTreeMap<String, String>,
     value: Option<u16>,
 ) -> Reply {
+    // ADR-0021's backward-compatibility half. A daemon that understands
+    // `device_actions` resolved this to a keystroke when the key was bound and
+    // never sends it here at all; a daemon built against SDK 1.0 dropped the
+    // field on the way in, because serde discards what it does not recognise,
+    // and will ask for a `perform` the author was told not to write.
+    //
+    // Answered here rather than left to fall through, because the fall-through
+    // is `AddonError::NoSuchAction` and that sentence is a lie: the action is
+    // right there in the list the user bound it from, and they would go looking
+    // for a missing action instead of an old Nobble.
+    //
+    // `Failed` rather than `Unavailable`: unavailable means try again later, and
+    // this never will be until the daemon is replaced.
+    if addon.device_actions().iter().any(|d| d.id == action) {
+        return Reply::Failed {
+            kind: FailureKind::Failed,
+            detail: format!(
+                "{action:?} is sent by the device, not by this addon. \
+                 This version of Nobble is older than the addon and cannot bind \
+                 it as a keystroke; update Nobble."
+            ),
+        };
+    }
+
     let invocation = match value {
         Some(v) => Invocation::moved(params, v),
         None => Invocation::press(params),
@@ -146,6 +172,11 @@ fn describe<A: Addon>(addon: &A) -> Description {
         name: addon.name().to_owned(),
         description: addon.description().to_owned(),
         actions: addon.actions().iter().map(action_decl).collect(),
+        device_actions: addon
+            .device_actions()
+            .iter()
+            .map(device_action_decl)
+            .collect(),
         signals: addon.signals().iter().map(signal_decl).collect(),
         settings: addon.settings().iter().map(setting_decl).collect(),
         permissions: addon.permissions().iter().map(permission_decl).collect(),
@@ -188,6 +219,45 @@ fn action_decl(a: &AddonAction) -> ActionDecl {
         }
         .to_owned(),
         params: a.params.iter().map(param_decl).collect(),
+    }
+}
+
+/// The device-resolved half of the same one-way derivation.
+///
+/// A second function beside [`action_decl`] rather than a branch inside it,
+/// because the two produce different shapes — this one has no trigger and no
+/// parameters to convert. It is still the *only* thing that produces a
+/// [`DeviceActionDecl`], which is the property that matters: one authored
+/// source, one derivation per owned type, nothing hand-maintaining the mirror.
+fn device_action_decl(d: &DeviceAction) -> DeviceActionDecl {
+    DeviceActionDecl {
+        id: d.id.to_owned(),
+        name: d.name.to_owned(),
+        description: d.description.to_owned(),
+        keystroke: keystroke_decl(d.keystroke),
+        prerequisite: d.prerequisite.map(ToOwned::to_owned),
+    }
+}
+
+/// Exhaustive on purpose: [`KeystrokeDecl::Unknown`] is a decode state and has
+/// no arm here, so a new [`DeviceKeystroke`] variant fails to compile until
+/// somebody decides what crosses the pipe for it.
+fn keystroke_decl(k: DeviceKeystroke) -> KeystrokeDecl {
+    match k {
+        DeviceKeystroke::Tap {
+            key,
+            ctrl,
+            shift,
+            alt,
+            gui,
+        } => KeystrokeDecl::HidTap {
+            key,
+            ctrl,
+            shift,
+            alt,
+            gui,
+        },
+        DeviceKeystroke::Consumer { usage } => KeystrokeDecl::HidConsumer { usage },
     }
 }
 
@@ -348,6 +418,20 @@ mod tests {
         params: &[],
     }];
 
+    const DEVICE_ACTIONS: &[DeviceAction] = &[DeviceAction {
+        id: "salute",
+        name: "Salute",
+        description: "The device sends this one.",
+        keystroke: DeviceKeystroke::Tap {
+            key: 0x10,
+            ctrl: true,
+            shift: true,
+            alt: false,
+            gui: false,
+        },
+        prerequisite: Some("Set this keybind in the other application."),
+    }];
+
     #[derive(Default)]
     struct Probe;
 
@@ -363,6 +447,9 @@ mod tests {
         }
         fn actions(&self) -> &'static [AddonAction] {
             ACTIONS
+        }
+        fn device_actions(&self) -> &'static [DeviceAction] {
+            DEVICE_ACTIONS
         }
         fn availability(&self) -> Availability {
             Availability::Ready
@@ -401,7 +488,7 @@ mod tests {
         let lines = out.lines();
         assert_eq!(
             lines[0],
-            r#"{"say":"welcome","version":{"major":1,"minor":0}}"#
+            r#"{"say":"welcome","version":{"major":1,"minor":1}}"#
         );
         let described: Reply = serde_json::from_str(&lines[1]).expect("parse");
         let Reply::Description(d) = described else {
@@ -464,6 +551,53 @@ mod tests {
             "an addon must not be able to name whose credential it wants"
         );
         assert_eq!(lines[1], r#"{"say":"done"}"#, "then the reply");
+    }
+
+    /// ADR-0021's backward-compatibility half, which nothing else can test:
+    /// only an *old* daemon sends this, and there is no old daemon to run
+    /// against. The failure has to say why, because the honest-looking answer —
+    /// `NoSuchAction` — would send the user hunting for a missing action that
+    /// is right there in the list they bound it from.
+    #[test]
+    fn an_old_daemon_asking_us_to_perform_a_device_action_is_told_why_not() {
+        let out = Recorder::default();
+        serve(
+            Probe,
+            script(&[r#"{"ask":"perform","action":"salute"}"#]),
+            out.clone(),
+        )
+        .expect("served");
+
+        let Reply::Failed { kind, detail } =
+            serde_json::from_str(&out.lines()[0]).expect("parse")
+        else {
+            panic!("expected a failure, got {:?}", out.lines()[0]);
+        };
+        // Not `Unavailable`: unavailable means try again later, and this will
+        // not change until the daemon is replaced.
+        assert_eq!(kind, FailureKind::Failed);
+        assert!(detail.contains("sent by the device"), "{detail}");
+        assert!(detail.contains("update Nobble"), "{detail}");
+    }
+
+    /// The addon author writes no `perform` arm for a device-resolved action,
+    /// so the id must never reach one. `Probe::perform` answers `NoSuchAction`
+    /// for anything but `wave`; if the guard above ever moves below the call,
+    /// this is what notices.
+    #[test]
+    fn a_device_action_never_reaches_the_addons_own_perform() {
+        let out = Recorder::default();
+        serve(
+            Probe,
+            script(&[r#"{"ask":"perform","action":"salute"}"#]),
+            out.clone(),
+        )
+        .expect("served");
+        assert!(
+            !out.lines()[0].contains("no_such_action"),
+            "the guard let it through: {}",
+            out.lines()[0]
+        );
     }
 
     #[test]
