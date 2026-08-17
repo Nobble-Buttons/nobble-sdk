@@ -648,6 +648,7 @@ pub struct DeviceAction {
 pub struct Invocation<'a> {
     params: &'a BTreeMap<String, ParamValue>,
     value: Option<u16>,
+    input: Option<&'a str>,
 }
 
 /// Nothing configured, for an action that takes no parameters.
@@ -661,6 +662,7 @@ impl<'a> Invocation<'a> {
         Self {
             params,
             value: None,
+            input: None,
         }
     }
 
@@ -670,6 +672,7 @@ impl<'a> Invocation<'a> {
         Self {
             params,
             value: Some(value),
+            input: None,
         }
     }
 
@@ -680,7 +683,32 @@ impl<'a> Invocation<'a> {
         Self {
             params: &NO_PARAMS,
             value: None,
+            input: None,
         }
+    }
+
+    /// Say which input this came from.
+    ///
+    /// A builder rather than a fourth argument, so every existing call still
+    /// compiles and reads the same. The host adds it; an addon never does.
+    #[must_use]
+    pub fn from(mut self, input: &'a str) -> Self {
+        self.input = Some(input);
+        self
+    }
+
+    /// Which input fired, as the same opaque string
+    /// [`Addon::bound_inputs`](crate::Addon::bound_inputs) lists.
+    ///
+    /// `None` when the interface asked rather than a key: there is no input,
+    /// and inventing one would name a key that does not exist.
+    ///
+    /// **Opaque, and meant to stay that way.** It is a key to match against the
+    /// ordered list, not something to parse — the *order* is the daemon's
+    /// answer, because only the daemon knows where the modules physically are.
+    #[must_use]
+    pub fn input(&self) -> Option<&str> {
+        self.input
     }
 
     /// One parameter, if the binding set it.
@@ -1102,6 +1130,27 @@ pub trait Addon: Send {
     /// the ones that do are the exception.
     fn settings(&self) -> &'static [AddonSetting] {
         &[]
+    }
+
+    /// The inputs bound to one of this addon's actions, **in device order**.
+    ///
+    /// Sent when it changes: a binding edited, a profile switched, a module
+    /// attached or unplugged. Defaulted to ignoring it, because almost no addon
+    /// cares which key called it.
+    ///
+    /// # Why the daemon sends an order rather than positions
+    ///
+    /// `006-FR-014a` defines fader order as *"ascending slot position, then
+    /// input index within the module"* — and the only side that knows where a
+    /// module physically sits is the daemon, which owns the inventory. Sending
+    /// coordinates would make every addon that cares reimplement the sort, and
+    /// the second implementation would be the one that was wrong about a
+    /// module attached at a negative offset.
+    ///
+    /// So this is already sorted. Match [`Invocation::input`] against it to
+    /// learn which fader moved and where it sits among the others.
+    fn bound_inputs(&mut self, action: &str, inputs: &[String]) {
+        let _ = (action, inputs);
     }
 
     /// Named lists its parameters can draw options from (ADR-0022).

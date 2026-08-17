@@ -87,6 +87,10 @@ pub fn serve<A: Addon, R: BufRead + Send + 'static, W: Write + Send + 'static>(
             Request::Status => Reply::Status {
                 status: addon.status(),
             },
+            Request::BoundInputs { action, inputs } => {
+                addon.bound_inputs(&action, &inputs);
+                Reply::Done
+            }
             Request::Configure { values } => {
                 addon.configure(&values, Arc::clone(&credentials));
                 Reply::Done
@@ -499,7 +503,7 @@ mod tests {
         let lines = out.lines();
         assert_eq!(
             lines[0],
-            r#"{"say":"welcome","version":{"major":1,"minor":1}}"#
+            r#"{"say":"welcome","version":{"major":1,"minor":2}}"#
         );
         let described: Reply = serde_json::from_str(&lines[1]).expect("parse");
         let Reply::Description(d) = described else {

@@ -67,7 +67,7 @@ use serde::{Deserialize, Serialize};
 ///   that is right there in the list.
 ///
 /// [ADR-0021]: ../../../docs/decisions/0021-addon-device-resolved-actions.md
-pub const PROTOCOL: Version = Version { major: 1, minor: 1 };
+pub const PROTOCOL: Version = Version { major: 1, minor: 2 };
 
 /// A protocol version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -135,6 +135,19 @@ pub enum Request {
         /// The fader position for a continuous action, absent for a press.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         value: Option<u16>,
+    },
+    /// The inputs bound to one action, in device order (`006-FR-014a`).
+    ///
+    /// Sent unprompted whenever the set or its order changes, which is the one
+    /// place the daemon tells an addon something rather than asking it. It is
+    /// still a request on the wire — the addon answers `Done` — because a
+    /// second message shape would need a second reader at both ends.
+    BoundInputs {
+        /// Which of the addon's actions.
+        action: String,
+        /// Every input bound to it, already sorted.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        inputs: Vec<String>,
     },
     /// Take these settings.
     Configure {
