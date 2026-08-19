@@ -52,6 +52,62 @@ pub trait Credentials: Send + Sync {
 /// A shared [`Credentials`], because an addon needs it after configuration too.
 pub type CredentialHandle = Arc<dyn Credentials>;
 
+/// Somewhere to remember things that are **not** secrets (ADR-0027).
+///
+/// The third place an addon can put something, after the settings file it is
+/// given and the credential store it reaches through [`Credentials`]. Those two
+/// are split by what the thing *is*: settings are written by the user and are
+/// explicitly shareable, credentials are the whole of an account's authority.
+/// This is for everything that is neither — a list of recently used things, a
+/// cache, an ordering somebody arranged — which previously had nowhere to go.
+///
+/// # Three things worth knowing before using it
+///
+/// **It is encrypted at rest and you cannot switch that off.** The host holds
+/// the key material and does the work; what crosses this interface is plaintext.
+/// An addon does not decide, because an addon that forgot would produce a
+/// plaintext file indistinguishable from one that had thought about it.
+///
+/// **That is protection at rest and nothing more.** The host must be able to
+/// decrypt in order to hand the value back, so anything running as the same
+/// user can obtain the same plaintext. It defends a profile directory that is
+/// copied, synced, backed up or attached to a bug report. Do not tell a user it
+/// does more.
+///
+/// **It can forget.** A store whose key material is gone reads as empty rather
+/// than as an error — see [`Self::get`]. Anything that cannot survive being
+/// forgotten belongs in the settings file or the credential store instead.
+pub trait Store: Send + Sync {
+    /// Read one, or `None`.
+    ///
+    /// `None` covers *never written*, *cleared*, and *the key material is no
+    /// longer readable*. Deliberately one answer: the last is indistinguishable
+    /// from the first without leaking whether a value once existed, and an
+    /// addon could not act differently on it anyway.
+    fn get(&self, key: &str) -> Option<String>;
+
+    /// Write one.
+    ///
+    /// # Errors
+    /// If the host refused — no implementation on this platform, or the write
+    /// failed. Storing less than you wanted is recoverable; storing it in the
+    /// clear instead is not, so there is no fallback.
+    fn set(&self, key: &str, value: &str) -> Result<(), String>;
+
+    /// Forget one. Absent is the outcome, so forgetting nothing is success.
+    fn clear(&self, key: &str);
+
+    /// Every key currently stored.
+    ///
+    /// What makes a store **clearable and inspectable** rather than a place
+    /// data accumulates unseen — an addon that keeps a record of people has to
+    /// be able to show it and empty it, and cannot do either without this.
+    fn keys(&self) -> Vec<String>;
+}
+
+/// A shared [`Store`], for the same reason [`CredentialHandle`] is shared.
+pub type StoreHandle = Arc<dyn Store>;
+
 /// Full scale for a 14-bit fader value.
 ///
 /// Lives here rather than in `nobble-core` because [`Invocation::fraction`]
@@ -1264,6 +1320,18 @@ pub trait Addon: Send {
     /// token has to go back, and that happens mid-action rather than at
     /// configuration time.
     fn configure(&mut self, _values: &BTreeMap<String, String>, _credentials: CredentialHandle) {}
+
+    /// Take somewhere to remember things that are not secrets (ADR-0027).
+    ///
+    /// Called **once, before the first [`Self::configure`]**, so an addon that
+    /// wants to load what it remembered can do so before it is asked anything.
+    ///
+    /// A separate method rather than a third argument to `configure`, because
+    /// this arrived after the trait was published and widening a signature
+    /// would break every addon written against the older one — including ones
+    /// whose authors cannot be contacted. Defaulted to ignoring it, which is
+    /// the right behaviour for the many addons that remember nothing.
+    fn attach_store(&mut self, _store: StoreHandle) {}
 
     /// Read every signal it publishes, now.
     ///

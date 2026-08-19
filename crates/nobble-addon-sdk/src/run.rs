@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use crate::addon::{
     Addon, AddonAction, AddonChoices, AddonError, AddonParam, AddonSetting, AddonSignal,
     Availability, CredentialHandle, Credentials, DeviceAction, DeviceKeystroke, Invocation,
-    Permission, Reading,
+    Permission, Reading, Store, StoreHandle,
 };
 use crate::protocol::{
     ActionDecl, Answer, Ask, AvailabilityDecl, ChoiceDecl, ChoicesDecl, Description,
@@ -49,6 +49,12 @@ pub fn serve<A: Addon, R: BufRead + Send + 'static, W: Write + Send + 'static>(
     let credentials: CredentialHandle = Arc::new(WireCredentials {
         pipe: Arc::clone(&pipe),
     });
+
+    // Handed over before the first request, so an addon that remembers things
+    // has them loaded before anybody asks it anything (ADR-0027).
+    addon.attach_store(Arc::new(WireStore {
+        pipe: Arc::clone(&pipe),
+    }) as StoreHandle);
 
     loop {
         let Some(text) = read_line(&pipe)? else {
@@ -380,7 +386,7 @@ impl<R: BufRead + Send, W: Write + Send> Credentials for WireCredentials<R, W> {
             Answer::Value { value } => value,
             // A refusal and an absence are the same to the caller: there is no
             // credential to use. The daemon has already told the user why.
-            Answer::Stored | Answer::Refused { .. } => None,
+            Answer::Stored | Answer::Keys { .. } | Answer::Refused { .. } => None,
         }
     }
 
@@ -391,7 +397,9 @@ impl<R: BufRead + Send, W: Write + Send> Credentials for WireCredentials<R, W> {
         }) {
             Some(Answer::Stored) => Ok(()),
             Some(Answer::Refused { detail }) => Err(detail),
-            Some(Answer::Value { .. }) | None => Err("the daemon did not answer".to_owned()),
+            Some(Answer::Value { .. } | Answer::Keys { .. }) | None => {
+                Err("the daemon did not answer".to_owned())
+            }
         }
     }
 
@@ -399,6 +407,67 @@ impl<R: BufRead + Send, W: Write + Send> Credentials for WireCredentials<R, W> {
         let _ = self.exchange(&Ask::Clear {
             key: key.to_owned(),
         });
+    }
+}
+
+/// [`Store`] over the same pipe, by the same nesting argument as
+/// [`WireCredentials`].
+///
+/// A second type rather than a second set of methods on the first, because they
+/// are different places and an addon holding one handle that could reach both
+/// would make *which store did this go to* a question somebody has to answer at
+/// every call site (ADR-0027).
+struct WireStore<R, W> {
+    pipe: Arc<Mutex<Pipe<R, W>>>,
+}
+
+impl<R: BufRead + Send, W: Write + Send> WireStore<R, W> {
+    fn exchange(&self, ask: &Ask) -> Option<Answer> {
+        send(&self.pipe, &Reply::Ask(ask.clone())).ok()?;
+        let text = read_line(&self.pipe).ok()??;
+        serde_json::from_str(&text).ok()
+    }
+}
+
+impl<R: BufRead + Send, W: Write + Send> Store for WireStore<R, W> {
+    fn get(&self, key: &str) -> Option<String> {
+        match self.exchange(&Ask::StoreGet {
+            key: key.to_owned(),
+        })? {
+            Answer::Value { value } => value,
+            // Absent, refused and unreadable are one answer on purpose: an
+            // addon cannot act differently on them, and distinguishing them
+            // would leak that a value once existed.
+            Answer::Stored | Answer::Keys { .. } | Answer::Refused { .. } => None,
+        }
+    }
+
+    fn set(&self, key: &str, value: &str) -> Result<(), String> {
+        match self.exchange(&Ask::StoreSet {
+            key: key.to_owned(),
+            value: value.to_owned(),
+        }) {
+            Some(Answer::Stored) => Ok(()),
+            Some(Answer::Refused { detail }) => Err(detail),
+            // No fallback to storing it unencrypted. Remembering less than you
+            // wanted is recoverable; the other thing is not.
+            Some(Answer::Value { .. } | Answer::Keys { .. }) | None => {
+                Err("the daemon did not answer".to_owned())
+            }
+        }
+    }
+
+    fn clear(&self, key: &str) {
+        let _ = self.exchange(&Ask::StoreClear {
+            key: key.to_owned(),
+        });
+    }
+
+    fn keys(&self) -> Vec<String> {
+        match self.exchange(&Ask::StoreKeys) {
+            Some(Answer::Keys { keys }) => keys,
+            _ => Vec::new(),
+        }
     }
 }
 

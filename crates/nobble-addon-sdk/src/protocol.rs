@@ -260,6 +260,35 @@ pub enum Ask {
         /// Which key.
         key: String,
     },
+    /// Read one from the addon's own store (ADR-0027).
+    ///
+    /// A different place from the three above, not a different key space. Those
+    /// reach the OS credential store, which is for values that are the whole of
+    /// an account's authority; this reaches a store the daemon encrypts at rest
+    /// and is for everything an addon wants to remember that is *not* a secret.
+    StoreGet {
+        /// Which key.
+        key: String,
+    },
+    /// Write one to the addon's own store.
+    ///
+    /// **What crosses this pipe is plaintext.** The encryption is the daemon's
+    /// and is not optional — an addon that had to remember to ask for it would
+    /// eventually produce a file indistinguishable from one that had reasoned
+    /// about it.
+    StoreSet {
+        /// Which key.
+        key: String,
+        /// What to store.
+        value: String,
+    },
+    /// Forget one from the addon's own store.
+    StoreClear {
+        /// Which key.
+        key: String,
+    },
+    /// Every key in the addon's own store.
+    StoreKeys,
 }
 
 /// The daemon's answer to an [`Ask`].
@@ -273,6 +302,17 @@ pub enum Answer {
     },
     /// The write or the clear succeeded.
     Stored,
+    /// Every key there is, for [`Ask::StoreKeys`].
+    ///
+    /// Empty is the answer for a store that has never been written, a store
+    /// whose key material has been rotated away, and a platform with no
+    /// implementation. All three mean *there is nothing here*, and an addon
+    /// that treated them differently would be acting on a distinction it cannot
+    /// verify (ADR-0027).
+    Keys {
+        /// In whatever order the store keeps them.
+        keys: Vec<String>,
+    },
     /// It did not.
     Refused {
         /// Why, as a sentence.
