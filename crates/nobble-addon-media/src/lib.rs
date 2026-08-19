@@ -56,6 +56,7 @@ const ACTIONS: &[AddonAction] = &[
         description: "Toggles playback.",
         trigger: Trigger::Momentary,
         params: TARGET,
+        ..AddonAction::BASE
     },
     AddonAction {
         id: "next",
@@ -63,6 +64,7 @@ const ACTIONS: &[AddonAction] = &[
         description: "Skips forward.",
         trigger: Trigger::Momentary,
         params: TARGET,
+        ..AddonAction::BASE
     },
     AddonAction {
         id: "previous",
@@ -70,6 +72,7 @@ const ACTIONS: &[AddonAction] = &[
         description: "Skips back.",
         trigger: Trigger::Momentary,
         params: TARGET,
+        ..AddonAction::BASE
     },
     AddonAction {
         id: "stop",
@@ -77,6 +80,7 @@ const ACTIONS: &[AddonAction] = &[
         description: "Stops playback.",
         trigger: Trigger::Momentary,
         params: TARGET,
+        ..AddonAction::BASE
     },
 ];
 

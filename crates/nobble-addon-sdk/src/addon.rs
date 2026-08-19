@@ -527,9 +527,41 @@ pub struct AddonAction {
     pub trigger: Trigger,
     /// What it needs to know, if anything.
     pub params: &'static [AddonParam],
+    /// The step outside Nobble that has to happen for this to work, if there
+    /// is one.
+    ///
+    /// The same field [`DeviceAction`] carries, and for the same reason: a
+    /// dependency Nobble cannot verify has to be *stated*, and an interface
+    /// must not claim the key works until the user confirms it. `None` where
+    /// there is nothing to arrange elsewhere, which is almost every action.
+    ///
+    /// **It belongs to the action, so an action that only sometimes needs one
+    /// is two actions.** A prerequisite shown on a binding that does not need
+    /// it teaches people to dismiss the ones that do.
+    pub prerequisite: Option<&'static str>,
 }
 
 impl AddonAction {
+    /// An action with nothing set, to build from.
+    ///
+    /// Exists for the reason [`AddonParam::BASE`] does, learned the same way:
+    /// this struct gained a field, and every `const` array declaring one had to
+    /// be edited to say nothing had changed. With `..AddonAction::BASE` the
+    /// next field costs nobody anything.
+    ///
+    /// The trigger defaults to [`Trigger::Momentary`] because most actions are
+    /// presses — but it is the one field worth writing out anyway, since a
+    /// continuous action silently declared as a press is bindable to a key that
+    /// can never supply it a position.
+    pub const BASE: Self = Self {
+        id: "",
+        name: "",
+        description: "",
+        trigger: Trigger::Momentary,
+        params: &[],
+        prerequisite: None,
+    };
+
     /// One parameter's declaration, by id.
     #[must_use]
     pub fn param(&self, id: &str) -> Option<&'static AddonParam> {

@@ -102,6 +102,7 @@ const ACTIONS: &[AddonAction] = &[
         description: "Moves the volume to where the fader is.",
         trigger: Trigger::Continuous,
         params: TARGET,
+        ..AddonAction::BASE
     },
     AddonAction {
         id: "mute",
@@ -109,6 +110,7 @@ const ACTIONS: &[AddonAction] = &[
         description: "Mutes or unmutes.",
         trigger: Trigger::Momentary,
         params: TARGET,
+        ..AddonAction::BASE
     },
     AddonAction {
         id: "mute_microphone",
@@ -117,6 +119,7 @@ const ACTIONS: &[AddonAction] = &[
                       applications to take it from only those.",
         trigger: Trigger::Momentary,
         params: MIC_TARGETS,
+        ..AddonAction::BASE
     },
     AddonAction {
         id: "deafen",
@@ -125,6 +128,7 @@ const ACTIONS: &[AddonAction] = &[
                       its own sound is muted.",
         trigger: Trigger::Momentary,
         params: DEAFEN_TARGETS,
+        ..AddonAction::BASE
     },
 ];
 

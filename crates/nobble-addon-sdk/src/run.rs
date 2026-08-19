@@ -519,6 +519,7 @@ mod tests {
         description: "Says hello.",
         trigger: Trigger::Momentary,
         params: &[],
+        ..AddonAction::BASE
     }];
 
     const DEVICE_ACTIONS: &[DeviceAction] = &[DeviceAction {

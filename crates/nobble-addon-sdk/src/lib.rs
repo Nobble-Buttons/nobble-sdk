@@ -15,6 +15,9 @@
 //!     description: "Says hello.",
 //!     trigger: Trigger::Momentary,
 //!     params: &[],
+//!     // Everything this action does not need. Finishing a declaration with
+//!     // `..BASE` is how a later field costs you nothing.
+//!     ..AddonAction::BASE
 //! }];
 //!
 //! impl Addon for Hello {
