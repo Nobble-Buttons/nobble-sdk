@@ -104,6 +104,10 @@ pub fn serve<A: Addon, R: BufRead + Send + 'static, W: Write + Send + 'static>(
                     })
                     .collect(),
             },
+            Request::HeldInputs { action, held } => {
+                addon.held_inputs(&action, &held);
+                Reply::Done
+            }
             Request::BoundInputs { action, inputs } => {
                 addon.bound_inputs(&action, &inputs);
                 Reply::Done

@@ -157,6 +157,19 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         inputs: Vec<String>,
     },
+    /// Which of one action's inputs the user is holding right now.
+    ///
+    /// Sent when the set changes. Empty is the ordinary case and is omitted on
+    /// the wire, so an addon that never receives one has nothing held — which
+    /// is also what an older host that never sends one means.
+    HeldInputs {
+        /// Which of the addon's actions.
+        action: String,
+        /// The inputs currently held, in the same vocabulary as
+        /// [`Self::BoundInputs`].
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        held: Vec<String>,
+    },
     /// Take these settings.
     Configure {
         /// By setting id.

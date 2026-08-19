@@ -1258,6 +1258,29 @@ pub trait Addon: Send {
         let _ = (action, inputs);
     }
 
+    /// Which of this action's inputs the user currently has hold of.
+    ///
+    /// Sent when the set changes, not on a timer. Defaulted to ignoring it,
+    /// because almost no addon cares — it matters only where the host *moves*
+    /// an input on its own, which today means a motorised fader.
+    ///
+    /// # Why an addon is told rather than asked
+    ///
+    /// Held is defined against something the **device** reports, and only the
+    /// host sees the device. An addon deriving it from the values it receives
+    /// would be doing it from the wrong side of a pipe and against a different
+    /// set of reports, and two definitions of held would disagree exactly when
+    /// it mattered.
+    ///
+    /// # What it is for
+    ///
+    /// A host-driven control moving under somebody's hand is the case where
+    /// automation stops feeling like automation. An addon that reassigns
+    /// controls should leave a held one alone and apply the change when it is
+    /// released — **and apply the latest one**, not the one that was pending
+    /// when it was grabbed. The user let go into the present.
+    fn held_inputs(&mut self, _action: &str, _held: &[String]) {}
+
     /// Named lists its parameters can draw options from (ADR-0022).
     ///
     /// Defaulted to nothing, because most parameters are free text and always
