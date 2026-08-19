@@ -59,7 +59,7 @@ pub mod protocol;
 mod run;
 
 pub use addon::{
-    Addon, AddonAction, AddonChoice, AddonChoices, AddonError, AddonParam, AddonSetting,
+    Addon, AddonAction, AddonChoice, AddonChoices, AddonError, AddonParam, AddonSetting, Choice,
     AddonSignal, Availability, CredentialHandle, Credentials, DeviceAction, DeviceKeystroke,
     FADER_MAX, Invocation, ParamKind, ParamValue, Permission, Reading, Trigger, app_matches,
 };

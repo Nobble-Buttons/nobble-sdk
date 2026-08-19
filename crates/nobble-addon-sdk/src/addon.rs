@@ -317,6 +317,55 @@ pub struct AddonChoice {
     pub label: &'static str,
 }
 
+/// One option from a [live](AddonChoices::live) source.
+///
+/// The owned twin of [`AddonChoice`], and it has to be owned: a roster is
+/// people who happen to be in a call right now, so there is nothing to borrow
+/// from and nothing `'static` to point at.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Choice {
+    /// What gets stored in the binding.
+    ///
+    /// **An identity, not a name.** Whatever survives the label changing —
+    /// a rename, a nickname, a rejoin — because this is what the binding still
+    /// holds next week.
+    pub value: String,
+    /// What the user reads while choosing.
+    pub label: String,
+    /// A second line, where the label alone is ambiguous.
+    ///
+    /// Two people called Alex in one call is ordinary, and the identity
+    /// underneath is a number nobody recognises. Empty when there is nothing to
+    /// add, which is the common case.
+    pub detail: String,
+}
+
+impl Choice {
+    /// One with nothing to disambiguate it.
+    #[must_use]
+    pub fn new(value: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            value: value.into(),
+            label: label.into(),
+            detail: String::new(),
+        }
+    }
+
+    /// One that needs a second line to tell it from another.
+    #[must_use]
+    pub fn detailed(
+        value: impl Into<String>,
+        label: impl Into<String>,
+        detail: impl Into<String>,
+    ) -> Self {
+        Self {
+            value: value.into(),
+            label: label.into(),
+            detail: detail.into(),
+        }
+    }
+}
+
 /// A named list of options an addon offers, which a parameter can draw from.
 ///
 /// [ADR-0022]. **Named rather than attached to one parameter**, and the third
@@ -1164,6 +1213,31 @@ pub trait Addon: Send {
     /// daemon asks for them when somebody opens the picker.
     fn choices(&self) -> &'static [AddonChoices] {
         &[]
+    }
+
+    /// The current options for a [`live`](AddonChoices::live) source.
+    ///
+    /// Asked **when somebody opens the picker, and at no other time.** Not
+    /// polled: a timer would cost idle CPU for a picker nobody has open. So
+    /// this is allowed to be the slow one — but it still must not block for
+    /// long, because an interface is waiting on it with nothing to draw.
+    ///
+    /// Answer from whatever the addon already knows rather than by asking the
+    /// far side. An addon that holds a cached picture answers from memory; one
+    /// that must fetch should keep the request small and give up quickly rather
+    /// than leave a menu spinning.
+    ///
+    /// **The order is the addon's to decide**, and that is the point of a named
+    /// source rather than a per-parameter one: an addon that wants *who is here
+    /// now*, then *who I have seen before*, then nothing, returns one flat
+    /// ordered list and the interface renders it in that order. No interface
+    /// support is needed for a concept only the addon has.
+    ///
+    /// An unknown id answers empty rather than panicking — the daemon and the
+    /// addon can disagree across a version, and a menu with nothing in it is a
+    /// better outcome than a dead child process.
+    fn live_choices(&mut self, _id: &str) -> Vec<Choice> {
+        Vec::new()
     }
 
     /// Everything it needs to be *allowed* to do (FR-046).

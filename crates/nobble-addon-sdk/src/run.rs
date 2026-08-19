@@ -87,6 +87,17 @@ pub fn serve<A: Addon, R: BufRead + Send + 'static, W: Write + Send + 'static>(
             Request::Status => Reply::Status {
                 status: addon.status(),
             },
+            Request::LiveChoices { id } => Reply::LiveChoices {
+                choices: addon
+                    .live_choices(&id)
+                    .into_iter()
+                    .map(|c| ChoiceDecl {
+                        value: c.value,
+                        label: c.label,
+                        detail: c.detail,
+                    })
+                    .collect(),
+            },
             Request::BoundInputs { action, inputs } => {
                 addon.bound_inputs(&action, &inputs);
                 Reply::Done
@@ -285,6 +296,10 @@ fn choices_decl(c: &AddonChoices) -> ChoicesDecl {
             .map(|v| ChoiceDecl {
                 value: v.value.to_owned(),
                 label: v.label.to_owned(),
+                // A declared source has nothing to disambiguate: its values are
+                // fixed at build time, so an author who needs two of them told
+                // apart writes it into the label.
+                detail: String::new(),
             })
             .collect(),
     }

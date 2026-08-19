@@ -121,6 +121,14 @@ pub enum Request {
     },
     /// A sentence for the interface, if it has one.
     Status,
+    /// The current options for a live choice source (ADR-0022).
+    ///
+    /// Sent when somebody opens a picker, and at no other time — never on a
+    /// timer, which would cost idle CPU for a menu nobody has open.
+    LiveChoices {
+        /// Which named source.
+        id: String,
+    },
     /// Do something.
     Perform {
         /// Which action.
@@ -183,6 +191,12 @@ pub enum Reply {
     Status {
         /// The sentence, if there is one.
         status: Option<String>,
+    },
+    /// Answer to [`Request::LiveChoices`].
+    LiveChoices {
+        /// In the order the addon wants them shown — the ordering is a concept
+        /// only the addon has, so the interface renders rather than sorts.
+        choices: Vec<ChoiceDecl>,
     },
     /// Answer to [`Request::ReadSignals`].
     Signals(ReadingDecl),
@@ -502,6 +516,18 @@ pub struct ChoiceDecl {
     pub value: String,
     /// What the user reads.
     pub label: String,
+    /// A second line, where the label alone is ambiguous.
+    ///
+    /// **Defaulted, so this stayed additive.** An addon built against an
+    /// earlier SDK sends no such field and an older daemon ignores it, which is
+    /// what an API that is a promise to strangers has to manage.
+    ///
+    /// Exists because display names are not unique: two people called Alex in
+    /// one call is ordinary, and the identity underneath is a number nobody
+    /// recognises. A binding attached to the wrong Alex works perfectly and
+    /// passes every test.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub detail: String,
 }
 
 /// One signal, owned. Mirrors [`AddonSignal`](crate::AddonSignal).
