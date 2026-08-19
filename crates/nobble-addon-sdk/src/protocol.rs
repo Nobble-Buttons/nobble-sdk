@@ -430,6 +430,18 @@ pub struct ActionDecl {
     /// What it can be configured with.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub params: Vec<ParamDecl>,
+    /// What a person must do elsewhere first, if anything. Mirrors
+    /// [`AddonAction::prerequisite`](crate::AddonAction::prerequisite).
+    ///
+    /// Present here because it was once not, and nobody noticed: the field
+    /// existed on [`AddonAction`](crate::AddonAction), the daemon's RPC carried
+    /// it, and the settings window rendered it — but this type sat in the middle
+    /// and had no place to put it, so every out-of-process addon's prerequisite
+    /// arrived as `None`. Unit tests on both sides passed throughout, because
+    /// neither side crosses the pipe. Additive and optional, so an addon built
+    /// against an older SDK still decodes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prerequisite: Option<String>,
 }
 
 /// One device-resolved action, owned. Mirrors

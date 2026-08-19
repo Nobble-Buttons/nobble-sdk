@@ -241,6 +241,7 @@ fn action_decl(a: &AddonAction) -> ActionDecl {
         description: a.description.to_owned(),
         trigger: a.trigger.as_wire().to_owned(),
         params: a.params.iter().map(param_decl).collect(),
+        prerequisite: a.prerequisite.map(ToOwned::to_owned),
     }
 }
 
@@ -603,6 +604,34 @@ mod tests {
         assert_eq!(d.actions[0].trigger, "momentary");
         // Derived from the borrowed declaration, never hand-written.
         assert_eq!(d.actions[0].id, "wave");
+    }
+
+    /// This one is about the derivation losing a field, which is invisible from
+    /// either end. `AddonAction::prerequisite` existed, the daemon's own types
+    /// had it and the settings window rendered it — and `action_decl` had
+    /// nothing to copy it into, so no addon out of process ever shipped one.
+    /// Asserted on the encoded text rather than the struct, because the struct
+    /// is the half that was already right.
+    #[test]
+    fn an_actions_prerequisite_is_carried_into_the_declaration() {
+        const NEEDY: AddonAction = AddonAction {
+            id: "push_to_talk",
+            name: "Push to talk",
+            description: "Holds the key down.",
+            trigger: Trigger::Momentary,
+            prerequisite: Some("Set this keybind in the other application."),
+            ..AddonAction::BASE
+        };
+
+        let decl = action_decl(&NEEDY);
+        assert_eq!(decl.prerequisite.as_deref(), NEEDY.prerequisite);
+        let encoded = serde_json::to_string(&decl).expect("encode");
+        assert!(encoded.contains("Set this keybind"), "{encoded}");
+
+        // And absent rather than empty when there is nothing to say, so a
+        // reader cannot mistake "no prerequisite" for "a blank one".
+        let plain = serde_json::to_string(&action_decl(&ACTIONS[0])).expect("encode");
+        assert!(!plain.contains("prerequisite"), "{plain}");
     }
 
     #[test]
