@@ -66,8 +66,28 @@ use serde::{Deserialize, Serialize};
 ///   to `NoSuchAction`, which would send the user looking for a missing action
 ///   that is right there in the list.
 ///
+/// # 1.2 — a prerequisite on an action
+///
+/// See [`AddonAction`]'s own history; recorded here so the list has no gap.
+///
+/// # 1.3 — an action the account cannot perform
+///
+/// [`Reply::Applies`] gained `unavailable` ([ADR-0030]). Minor for the same
+/// reason 1.1 was: the field is `#[serde(default)]` and skipped when `None`, so
+/// a 1.2 addon — which never sends it — parses unchanged and puts **not one new
+/// byte** on the wire.
+///
+/// The asymmetry worth knowing: a **1.3 daemon with a 1.2 addon** reads `None`
+/// and offers everything, which is exactly the behaviour before this field
+/// existed. A **1.2 daemon with a 1.3 addon** drops the field it does not know,
+/// and the user gets the refusal on press rather than the mark in advance —
+/// degraded, never wrong. Neither direction needed a new request, which is the
+/// point: the per-action round trip already existed and now answers two
+/// questions.
+///
 /// [ADR-0021]: ../../../docs/decisions/0021-addon-device-resolved-actions.md
-pub const PROTOCOL: Version = Version { major: 1, minor: 2 };
+/// [ADR-0030]: ../../../docs/decisions/0030-actions-an-account-cannot-perform.md
+pub const PROTOCOL: Version = Version { major: 1, minor: 3 };
 
 /// A protocol version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -196,9 +216,23 @@ pub enum Reply {
     /// Answer to [`Request::Availability`].
     Availability(AvailabilityDecl),
     /// Answer to [`Request::Applies`].
+    ///
+    /// **Two facts, one round trip.** They are different questions — relevance
+    /// and capability, see [`Addon::applies`] and [`Addon::unavailable`] — but
+    /// they are both per-action and both re-read every time the interface
+    /// draws. A second request would double the per-action cost of a refresh
+    /// that already asks each child once per action, so the question stays
+    /// `Applies` and the answer carries both.
     Applies {
         /// Whether it is worth offering.
         applies: bool,
+        /// Why this account cannot perform it, if it cannot.
+        ///
+        /// Added in protocol 1.3. `default` rather than required, so a 1.2
+        /// addon — which never sends it — still parses here, which is what
+        /// makes this a minor bump.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        unavailable: Option<String>,
     },
     /// Answer to [`Request::Status`].
     Status {

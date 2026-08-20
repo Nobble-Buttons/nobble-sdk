@@ -89,6 +89,7 @@ pub fn serve<A: Addon, R: BufRead + Send + 'static, W: Write + Send + 'static>(
             }),
             Request::Applies { action } => Reply::Applies {
                 applies: addon.applies(&action),
+                unavailable: addon.unavailable(&action),
             },
             Request::Status => Reply::Status {
                 status: addon.status(),
@@ -593,7 +594,7 @@ mod tests {
         let lines = out.lines();
         assert_eq!(
             lines[0],
-            r#"{"say":"welcome","version":{"major":1,"minor":2}}"#
+            r#"{"say":"welcome","version":{"major":1,"minor":3}}"#
         );
         let described: Reply = serde_json::from_str(&lines[1]).expect("parse");
         let Reply::Description(d) = described else {

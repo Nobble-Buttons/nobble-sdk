@@ -1222,6 +1222,69 @@ pub trait Addon: Send {
         true
     }
 
+    /// Why the signed-in account cannot perform an action, when it cannot.
+    ///
+    /// `None` — the default — means nothing is known to stop it, which is the
+    /// ordinary case and the answer for every addon whose capabilities do not
+    /// depend on who is signed in.
+    ///
+    /// `Some(reason)` is shown to the user in their own words, beside the
+    /// action, wherever it is offered. Write it as a sentence about *their*
+    /// account rather than about the addon: "Starting playback needs a paid
+    /// subscription" tells somebody what to do about it, and "not permitted"
+    /// does not.
+    ///
+    /// # Three ways to say "not now", and they are not interchangeable
+    ///
+    /// Getting these confused is the easiest mistake to make against this
+    /// trait, so:
+    ///
+    /// | | Question | Scope | If it is set |
+    /// |---|---|---|---|
+    /// | [`Self::availability`] | *Can the addon act at all?* | The whole addon | Nothing works; the addon says why once |
+    /// | [`Self::applies`] | *Is this worth suggesting?* | One action | The interface stops offering it. **Not** permission — see below |
+    /// | `unavailable` | *Can this account do this?* | One action | Offered and marked, still bindable, refused with the reason |
+    ///
+    /// [`Self::applies`] is **relevance**: "Sign out" while nobody is signed in
+    /// is not wrong, it is pointless. This is **capability**: the action is
+    /// exactly what the user wants and their account will not do it.
+    ///
+    /// # Marked, not hidden
+    ///
+    /// The action stays in the list and stays bindable. Three reasons, and they
+    /// are the whole design:
+    ///
+    /// - Hiding it makes the interface claim *the product* cannot do this, when
+    ///   the truth is *this account* cannot.
+    /// - A binding authored while the account could do it must not vanish when
+    ///   it cannot — that is the same guarantee [`Self::applies`] protects.
+    /// - An account that gains the capability needs somewhere for the news to
+    ///   appear, and a hidden control has nowhere.
+    ///
+    /// # It is derived, never configured
+    ///
+    /// Work it out from what the account told you. Do not add a setting asking
+    /// the user which tier they are on: they will get it wrong, it will go
+    /// stale, and the answer is already available to whoever is asking.
+    ///
+    /// An addon that cannot find out returns `None` and the user gets a
+    /// refusal when they press, which is what happens today and is not a
+    /// regression.
+    ///
+    /// # Not for device-resolved actions
+    ///
+    /// A device-resolved action runs on the device, which knows nothing about
+    /// an account and is not asked. Gating one here marks it in the interface
+    /// and changes nothing about what the key does.
+    ///
+    /// Called whenever the interface draws the addon, so it must be quick and
+    /// must not block — the same contract as [`Self::availability`], and the
+    /// same reason. Read it from what the addon already holds; do not go and
+    /// ask the network.
+    fn unavailable(&self, _action: &str) -> Option<String> {
+        None
+    }
+
     /// One line about what it is currently connected to, when that is a
     /// question a user can have.
     ///
@@ -1404,7 +1467,123 @@ pub trait Addon: Send {
 
 #[cfg(test)]
 mod tests {
-    use super::{ParamKind, Trigger, app_matches};
+    use super::{
+        Addon, AddonAction, AddonError, Availability, Invocation, ParamKind, ParamValue, Trigger,
+        app_matches,
+    };
+    use std::collections::BTreeMap;
+
+    /// The four-line addon ADR-0030's contract is checked against.
+    ///
+    /// Deliberately not a real one: the guarantee is about the *trait*, and a
+    /// fake that gates one action on nothing at all can assert it without an
+    /// account, a network, or a subscription.
+    struct Gated;
+
+    const GATED_ACTIONS: &[AddonAction] = &[
+        AddonAction {
+            id: "free",
+            name: "Free",
+            description: "Works on any account.",
+            trigger: Trigger::Momentary,
+            params: &[],
+            ..AddonAction::BASE
+        },
+        AddonAction {
+            id: "paid",
+            name: "Paid",
+            description: "Needs a subscription.",
+            trigger: Trigger::Momentary,
+            params: &[],
+            ..AddonAction::BASE
+        },
+    ];
+
+    impl Addon for Gated {
+        fn id(&self) -> &'static str {
+            "gated"
+        }
+        fn name(&self) -> &'static str {
+            "Gated"
+        }
+        fn description(&self) -> &'static str {
+            "For tests."
+        }
+        fn actions(&self) -> &'static [AddonAction] {
+            GATED_ACTIONS
+        }
+        fn availability(&self) -> Availability {
+            Availability::Ready
+        }
+        fn unavailable(&self, action: &str) -> Option<String> {
+            (action == "paid").then(|| "This account is on the free plan.".to_owned())
+        }
+        fn perform(&mut self, _action: &str, _i: &Invocation<'_>) -> Result<(), AddonError> {
+            Ok(())
+        }
+    }
+
+    /// ADR-0030, asserted rather than assumed: **marked, not hidden.**
+    ///
+    /// All four of these failed before `unavailable` existed, because there was
+    /// no way to say this at all.
+    #[test]
+    fn an_action_the_account_cannot_perform_is_still_offered_and_still_runs() {
+        let mut addon = Gated;
+
+        // 1. Still listed. `actions()` is what an editor builds from, and it
+        //    must not shrink because of a subscription.
+        let listed: Vec<&str> = addon.actions().iter().map(|a| a.id).collect();
+        assert_eq!(listed, ["free", "paid"]);
+
+        // 2. Still relevant. `applies` is a different question and must not be
+        //    dragged along -- conflating them is what ADR-0030 exists to stop.
+        assert!(addon.applies("paid"), "still worth offering");
+
+        // 3. Still runs when asked. `perform` does not consult this; the addon
+        //    remains the authority on its own refusals and the daemon does not
+        //    develop a second opinion.
+        let no_params: BTreeMap<String, ParamValue> = BTreeMap::new();
+        assert!(
+            addon
+                .perform("paid", &Invocation::press(&no_params))
+                .is_ok(),
+            "the daemon still runs it if asked"
+        );
+
+        // 4. And the reason is there to show.
+        let why = addon.unavailable("paid").expect("a reason");
+        assert!(why.contains("account"), "got: {why}");
+        assert_eq!(addon.unavailable("free"), None, "nothing gates this one");
+    }
+
+    /// The default is what every existing addon inherits, and it must be the
+    /// pre-ADR-0030 behaviour exactly: nothing is gated.
+    #[test]
+    fn an_addon_that_says_nothing_gates_nothing() {
+        struct Plain;
+        impl Addon for Plain {
+            fn id(&self) -> &'static str {
+                "plain"
+            }
+            fn name(&self) -> &'static str {
+                "Plain"
+            }
+            fn description(&self) -> &'static str {
+                "For tests."
+            }
+            fn actions(&self) -> &'static [AddonAction] {
+                &[]
+            }
+            fn availability(&self) -> Availability {
+                Availability::Ready
+            }
+            fn perform(&mut self, _a: &str, _i: &Invocation<'_>) -> Result<(), AddonError> {
+                Ok(())
+            }
+        }
+        assert_eq!(Plain.unavailable("anything"), None);
+    }
 
     /// Every variant survives the round trip its own encoder produces.
     ///
